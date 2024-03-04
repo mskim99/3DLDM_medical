@@ -15,8 +15,11 @@ class Logger(object):
     """Reference: https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514"""
 
     def __init__(self, fn, ask=True):
-        if not os.path.exists("./results/"):
-            os.mkdir("./results/")
+        # if not os.path.exists("./results/"):
+            # os.mkdir("./results/")
+
+        if not os.path.exists("/data/jionkim/PVDM/results/"):
+            os.mkdir("/data/jionkim/PVDM/results/")
 
         logdir = self._make_dir(fn)
         if not os.path.exists(logdir):
@@ -29,7 +32,8 @@ class Logger(object):
 
     def _make_dir(self, fn):
         # today = datetime.today().strftime("%y%m%d")
-        logdir = f'./results/{fn}/'
+        # logdir = f'./results/{fn}/'
+        logdir = f'/data/jionkim/PVDM/results/{fn}/'
         return logdir
 
     def set_dir(self, logdir, log_fn='log.txt'):

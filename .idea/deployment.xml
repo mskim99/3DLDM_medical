@@ -5,7 +5,7 @@
       <paths name="jionkim@165.246.42.44:22">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/jionkim/workspace/PVDM_modify" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

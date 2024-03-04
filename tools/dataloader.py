@@ -365,11 +365,11 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
 
     # kwargs = {'pin_memory': True, 'num_workers': 3}
 
-    trainset_sampler = InfiniteSampler(dataset=trainset, rank=rank, num_replicas=n_gpus, seed=seed)
+    trainset_sampler = InfiniteSampler(dataset=trainset, rank=0, num_replicas=n_gpus, seed=seed)
     # trainloader = DataLoader(trainset, sampler=trainset_sampler, batch_size=batch_size // n_gpus, pin_memory=False, num_workers=4, prefetch_factor=2)
     trainloader = DataLoader(trainset, sampler=trainset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
     
-    testset_sampler = InfiniteSampler(testset, num_replicas=n_gpus, rank=rank, seed=seed)
+    testset_sampler = InfiniteSampler(testset, num_replicas=n_gpus, rank=0, seed=seed)
     # testloader = DataLoader(testset, sampler=testset_sampler, batch_size=batch_size // n_gpus, pin_memory=False, num_workers=4, prefetch_factor=2)
     testloader = DataLoader(testset, sampler=testset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
 

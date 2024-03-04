@@ -10,7 +10,7 @@ model:
     loss_type: l1
     first_stage_key: "image"
     cond_stage_key: "image"
-    image_size: 32
+    image_size: 16
     channels: 4
     cond_stage_trainable: False
     concat_mode: False
@@ -25,7 +25,7 @@ model:
       f_min: [ 1.]
 
     unet_config:
-      image_size: 32
+      image_size: 16
       in_channels: 4
       out_channels: 4
       model_channels: 256
@@ -35,4 +35,4 @@ model:
       num_heads: 8
       use_scale_shift_norm: True
       resblock_updown: True
-      cond_model: True
+      cond_model: False

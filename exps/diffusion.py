@@ -96,7 +96,7 @@ def diffusion(rank, args):
     first_stage_model = ViTAutoencoder(args.embed_dim, args.ddconfig).to(device)
 
     # if rank == 0:
-    first_stage_model_ckpt = torch.load(args.first_model)
+    first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:2')
     first_stage_model.load_state_dict(first_stage_model_ckpt)
 
     unet = UNetModel(**args.unetconfig)

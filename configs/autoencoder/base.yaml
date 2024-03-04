@@ -1,7 +1,7 @@
 model:
   resume: False
   amp: True
-  base_learning_rate: 1.0e-4
+  base_learning_rate: 1.0e-5
   params:
     embed_dim: 4
     lossconfig:

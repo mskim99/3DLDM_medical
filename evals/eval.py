@@ -247,9 +247,6 @@ def test_fvd_ddpm(rank, ema_model, decoder, loader, it, logger=None):
 def save_image(rank, model, loader, it, logger=None):
     device = torch.device('cuda', rank)
 
-    losses = dict()
-    losses['psnr'] = AverageMeter()
-
     model.eval()
     with torch.no_grad():
         for n, (real, idx) in enumerate(loader):
@@ -276,3 +273,23 @@ def save_image(rank, model, loader, it, logger=None):
 
             nib.save(real_nii, os.path.join(logger.logdir, f'real_{it}.nii.gz'))
             nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))
+
+
+def save_image_ddpm(rank, ema_model, decoder, it, logger=None):
+    device = torch.device('cuda', rank)
+
+    diffusion_model = DDPM(ema_model,
+                           channels=ema_model.diffusion_model.in_channels,
+                           image_size=ema_model.diffusion_model.image_size,
+                           sampling_timesteps=100,
+                           w=0.).to(device)
+
+    with torch.no_grad():
+        z = diffusion_model.sample(batch_size=1)
+        fake = decoder.decode_from_sample(z).clamp(-1, 1).cpu()
+        fake = (1 + rearrange(fake, '(b t) c h w -> b t h w c', b=1)) * 127.5
+        fake = fake.type(torch.uint8).cpu().numpy()
+        fake = fake.squeeze()
+        fake = fake.swapaxes(0, 2)
+        fake_nii = nib.Nifti1Image(fake, None)
+        nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))

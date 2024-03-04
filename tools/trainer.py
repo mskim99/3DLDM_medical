@@ -4,20 +4,15 @@ import numpy as np
 import sys; sys.path.extend([sys.path[0][:-4], '/app'])
 
 import time
-import tqdm
 import copy
 import torch
-import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 
 
 from utils import AverageMeter
-from evals.eval import test_psnr, test_ifvd, test_fvd_ddpm, save_image
+from evals.eval import test_psnr, save_image, save_image_ddpm
 from models.ema import LitEma
 from einops import rearrange
-from torch.optim.lr_scheduler import LambdaLR
-
-import nibabel as nib
 
 def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, test_loader, scheduler, ema_model=None, cond_prob=0.3, logger=None):
 
@@ -49,7 +44,7 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
     for it, (x, _) in enumerate(train_loader):
         x = x.to(device)
-        x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w') # videos
+        x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
         c = None
 
         # conditional free guidance training
@@ -100,7 +95,8 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
         losses['diffusion_loss'].update(loss.item(), 1)
 
         # ema model
-        if it % 25 == 0 and it > 0:
+        # if it % 25 == 0 and it > 0:
+        if it % 25 == 0:
             ema(model)
 
         if it % 500 == 0:
@@ -120,16 +116,17 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            fvd = test_fvd_ddpm(rank, ema_model, first_stage_model, test_loader, it, logger)
-
+            save_image_ddpm(rank, ema_model, first_stage_model, it, logger)
+            # fvd = test_fvd_ddpm(rank, ema_model, first_stage_model, test_loader, it, logger)
 
             # if logger is not None and rank == 0:
+            '''
             if logger is not None:
                 logger.scalar_summary('test/fvd', fvd, it)
 
                 log_('[Time %.3f] [FVD %f]' %
                      (time.time() - check, fvd))
-
+                    '''
 
 def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loader, first_model, fp, logger=None):
     if logger is None:
