@@ -74,9 +74,9 @@ for file_path in files_list:
         # print(s_z*(i+1))
         # print(img_part.shape)
 '''
-'''
+
 path = "J:/Dataset/CHAOS_nibabel_norm_s_16/*/*"
-after_path = "J:/Dataset/CHAOS_nibabel_norm_res_256_s_16"
+after_path = "J:/Dataset/CHAOS_nibabel_norm_res_128_s_16"
 files_path = glob.glob(path)
 
 for file in files_path:
@@ -93,10 +93,10 @@ for file in files_path:
     img = nib.load(file)
     img_data = img.get_fdata()
 
-    img_resize = resize(img_data, [256, 256, 16])
+    img_resize = resize(img_data, [128, 128, 16])
     img_resize_nib = nib.Nifti1Image(img_resize, None)
     nib.save(img_resize_nib, after_path + '/' + idx + '/' + file_name)
-    '''
+
 
 '''
 path = "J:/Dataset/CHAOS_nibabel_norm_res_256_s_16/*/*"
@@ -115,11 +115,12 @@ for file in files_list:
     print(idx + '/' + file_name)
     # print(idx + '/' + file_name + ' ' + str(int(idx) + 1))
     '''
-
+'''
 path = "J:/Program/PVDM_modify/output/first_stage_main_CHAOS_42/generated_120000.nii.gz"
 img = nib.load(path)
 img_data = img.get_fdata()
 print(img_data.shape)
+'''
 
 
 

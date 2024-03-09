@@ -265,11 +265,11 @@ def save_image(rank, model, loader, it, logger=None):
             real = real.squeeze()
             fake = fake.squeeze()
 
-            real = real.swapaxes(0, 2)
-            fake = fake.swapaxes(0, 2)
+            real = real.swapaxes(1, 3)
+            fake = fake.swapaxes(1, 3)
 
-            real_nii = nib.Nifti1Image(real, None)
-            fake_nii = nib.Nifti1Image(fake, None)
+            real_nii = nib.Nifti1Image(real[0, :, :, :], None)
+            fake_nii = nib.Nifti1Image(fake[0, :, :, :], None)
 
             nib.save(real_nii, os.path.join(logger.logdir, f'real_{it}.nii.gz'))
             nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))

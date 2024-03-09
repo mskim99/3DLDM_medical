@@ -348,6 +348,7 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
         print(len(testset))
 
     elif imgstr == 'CHAOS':
+        # train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16')
         train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16')
         # test_dir = os.path.join(data_location, 'CHAOS_res_128')
         if cond:

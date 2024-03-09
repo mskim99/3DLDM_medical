@@ -115,7 +115,8 @@ class DDPM(nn.Module):
         self.clip_denoised = clip_denoised
         self.log_every_t = log_every_t
         self.first_stage_key = first_stage_key
-        self.image_size = 2048  # TODO: treat as argument (res*res + res*s*2)
+        # self.image_size = 2048  # TODO: treat as argument (res*res + res*s*2)
+        self.image_size = 768
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = model

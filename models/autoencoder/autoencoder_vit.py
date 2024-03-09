@@ -199,9 +199,13 @@ class ViTAutoencoder(nn.Module):
         return 2*self.act(self.to_pixel(dec)).contiguous() -1
 
     def forward(self, input):
+        # print(input.shape)
         input = rearrange(input, 'b c (n t) h w -> (b n) c t h w', n=self.splits)
+        # print(input.shape)
         z = self.encode(input)
+        # print(z.shape)
         dec = self.decode(z)
+        # print(dec.shape)
         return dec, 0.
 
     def extract(self, x):

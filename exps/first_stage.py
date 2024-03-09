@@ -64,7 +64,7 @@ def first_stage(rank, args):
     """ ROOT DIRECTORY """
     # if rank == 0:
     fn = file_name(args)
-    logger = Logger(fn)
+    logger = Logger(fn, ask=False)
     logger.log(args)
     logger.log(f'Log path: {logger.logdir}')
     rootdir = logger.logdir

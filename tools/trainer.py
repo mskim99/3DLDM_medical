@@ -141,13 +141,17 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     
     losses = dict()
     losses['ae_loss'] = AverageMeter()
+    losses['L1_loss'] = AverageMeter()
     losses['d_loss'] = AverageMeter()
     check = time.time()
 
     accum_iter = 3
     disc_opt = False
 
+    l1_criterion = torch.nn.L1Loss()
+
     if fp:
+        # print('fp')
         scaler = GradScaler()
         scaler_d = GradScaler()
 
@@ -162,6 +166,8 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     disc_start = criterion.discriminator_iter_start
     
     for it, (x, _) in enumerate(train_loader):
+
+        it = it + 166000
 
         if it > 1000000:
             break
@@ -182,28 +188,37 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
+        # print(x.min())
+        # print(x.max())
         # x = (x / 127.5 - 1).float()
 
         if not disc_opt:
             with autocast():
                 x_tilde, vq_loss  = model(x)
-                # print(x.shape)
-                # print(x_tilde.shape)
+                x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                 if it % accum_iter == 0:
                     model.zero_grad()
-                ae_loss = criterion(vq_loss, x, 
-                                    rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size),
+
+                ae_loss = criterion(vq_loss, x, x_tilde_ra,
                                     optimizer_idx=0,
                                     global_step=it)
                 ae_loss = ae_loss / accum_iter
 
-            scaler.scale(ae_loss).backward()
+                l1_loss = l1_criterion(x, x_tilde_ra)
+                l1_loss = 10. * l1_loss / accum_iter
+
+                # total_loss = 0.5 * (ae_loss + l1_loss)
+                total_loss = ae_loss
+
+            scaler.scale(total_loss).backward()
 
             if it % accum_iter == accum_iter - 1:
                 scaler.step(opt)
                 scaler.update()
 
+            # print(losses)
             losses['ae_loss'].update(ae_loss.item(), 1)
+            losses['L1_loss'].update(l1_loss.item(), 1)
 
         else:
             if it % accum_iter == 0:
@@ -246,12 +261,13 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             # if logger is not None and rank == 0:
             if logger is not None:
                 logger.scalar_summary('train/ae_loss', losses['ae_loss'].average, it)
+                logger.scalar_summary('train/L1_loss', losses['L1_loss'].average, it)
                 logger.scalar_summary('train/d_loss', losses['d_loss'].average, it)
                 logger.scalar_summary('test/psnr', psnr, it)
                 # logger.scalar_summary('test/fvd', fvd, it)
 
-                log_('[Time %.3f] [AELoss %f] [DLoss %f] [PSNR %f]' %
-                     (time.time() - check, losses['ae_loss'].average, losses['d_loss'].average, psnr))
+                log_('[Time %.3f] [AELoss %f] [L1Loss %f] [DLoss %f] [PSNR %f]' %
+                     (time.time() - check, losses['ae_loss'].average, losses['L1_loss'].average, losses['d_loss'].average, psnr))
 
                 torch.save(model.state_dict(), rootdir + f'model_last.pth')
                 torch.save(criterion.state_dict(), rootdir + f'loss_last.pth')
@@ -262,6 +278,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
             losses = dict()
             losses['ae_loss'] = AverageMeter()
+            losses['L1_loss'] = AverageMeter()
             losses['d_loss'] = AverageMeter()
 
         # if it % 2000 == 0 and rank == 0:

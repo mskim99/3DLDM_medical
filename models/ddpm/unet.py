@@ -846,18 +846,25 @@ class UNetModel(nn.Module):
         elif self.cond_model:
             h = torch.cat([h, self.zeros.repeat(h.size(0), 1, 1)], dim=1)
 
+        # print(h.shape)
+
         # TODO: treat 32 and 16 as variables
-        h_xy = h[:, :, 0:32*32].view(h.size(0), h.size(1), 32, 32)
-        h_yt = h[:, :, 32*32:32*(32+16)].view(h.size(0), h.size(1), 16, 32)
-        h_xt = h[:, :, 32*(32+16):32*(32+16+16)].view(h.size(0), h.size(1), 16, 32)
+        # h_xy = h[:, :, 0:32*32].view(h.size(0), h.size(1), 32, 32)
+        h_xy = h[:, :, 0:16*24].view(h.size(0), h.size(1), 16, 24)
+        # h_yt = h[:, :, 32*32:32*(32+16)].view(h.size(0), h.size(1), 16, 32)
+        h_yt = h[:, :, 16*24:(16+8)*24].view(h.size(0), h.size(1), 8, 24)
+        # h_xt = h[:, :, 32*(32+16):32*(32+16+16)].view(h.size(0), h.size(1), 16, 32)
+        h_xt = h[:, :, (16+8)*24:(16+8+8)*24].view(h.size(0), h.size(1), 8, 24)
 
         for module, input_attn in zip(self.input_blocks, self.input_attns):
             h_xy = module(h_xy, emb, context)
             h_yt = module(h_yt, emb, context)
             h_xt = module(h_xt, emb, context)
 
-            res = h_xy.size(-2)
-            t   = h_xt.size(-2)
+            # res = h_xy.size(-2)
+            res_idx2 = h_xy.size(2)
+            res_idx3 = h_xy.size(3)
+            t   = h_xt.size(2)
 
             h_xy = h_xy.view(h_xy.size(0), h_xy.size(1), -1)
             h_yt = h_yt.view(h_yt.size(0), h_yt.size(1), -1)
@@ -866,9 +873,12 @@ class UNetModel(nn.Module):
             h = torch.cat([h_xy, h_yt, h_xt], dim=-1)
             h = input_attn(h)
 
-            h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
-            h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
-            h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+            # h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
+            # h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
+            # h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+            h_xy = h[:, :, 0:res_idx3*res_idx2].view(h.size(0), h.size(1), res_idx2, res_idx3)
+            h_yt = h[:, :, res_idx3*res_idx2:res_idx3*(res_idx2+t)].view(h.size(0), h.size(1), t, res_idx3)
+            h_xt = h[:, :, res_idx3*(res_idx2+t):res_idx3*(res_idx2+t+t)].view(h.size(0), h.size(1), t, res_idx3)
 
             h_xys.append(h_xy)
             h_yts.append(h_yt)
@@ -878,8 +888,11 @@ class UNetModel(nn.Module):
         h_yt = self.middle_block(h_yt, emb, context)
         h_xt = self.middle_block(h_xt, emb, context)
 
-        res = h_xy.size(-2)
-        t   = h_xt.size(-2)
+        # res = h_xy.size(-2)
+        # t   = h_xt.size(-2)
+        res_idx2 = h_xy.size(2)
+        res_idx3 = h_xy.size(3)
+        t = h_xt.size(2)
 
         h_xy = h_xy.view(h_xy.size(0), h_xy.size(1), -1)
         h_yt = h_yt.view(h_yt.size(0), h_yt.size(1), -1)
@@ -888,9 +901,12 @@ class UNetModel(nn.Module):
         h = torch.cat([h_xy, h_yt, h_xt], dim=-1)
         h = self.mid_attn(h)
 
-        h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
-        h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
-        h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+        # h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
+        # h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
+        # h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+        h_xy = h[:, :, 0:res_idx3*res_idx2].view(h.size(0), h.size(1), res_idx2, res_idx3)
+        h_yt = h[:, :, res_idx3*res_idx2:res_idx3*(res_idx2+t)].view(h.size(0), h.size(1), t, res_idx3)
+        h_xt = h[:, :, res_idx3*(res_idx2+t):res_idx3*(res_idx2+t+t)].view(h.size(0), h.size(1), t, res_idx3)
 
         for module, output_attn in zip(self.output_blocks, self.output_attns):
             h_xy = th.cat([h_xy, h_xys.pop()], dim=1)
@@ -900,8 +916,11 @@ class UNetModel(nn.Module):
             h_xt = th.cat([h_xt, h_xts.pop()], dim=1)
             h_xt = module(h_xt, emb, context)
 
-            res = h_xy.size(-2)
-            t   = h_xt.size(-2)
+            # res = h_xy.size(-2)
+            # t   = h_xt.size(-2)
+            res_idx2 = h_xy.size(2)
+            res_idx3 = h_xy.size(3)
+            t = h_xt.size(2)
 
             h_xy = h_xy.view(h_xy.size(0), h_xy.size(1), -1)
             h_yt = h_yt.view(h_yt.size(0), h_yt.size(1), -1)
@@ -910,9 +929,12 @@ class UNetModel(nn.Module):
             h = torch.cat([h_xy, h_yt, h_xt], dim=-1)
             h = output_attn(h)
 
-            h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
-            h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
-            h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+            # h_xy = h[:, :, 0:res*res].view(h.size(0), h.size(1), res, res)
+            # h_yt = h[:, :, res*res:res*(res+t)].view(h.size(0), h.size(1), t, res)
+            # h_xt = h[:, :, res*(res+t):res*(res+t+t)].view(h.size(0), h.size(1), t, res)
+            h_xy = h[:, :, 0:res_idx3*res_idx2].view(h.size(0), h.size(1), res_idx2, res_idx3)
+            h_yt = h[:, :, res_idx3*res_idx2:res_idx3*(res_idx2+t)].view(h.size(0), h.size(1), t, res_idx3)
+            h_xt = h[:, :, res_idx3*(res_idx2+t):res_idx3*(res_idx2+t+t)].view(h.size(0), h.size(1), t, res_idx3)
 
         h_xy = self.out(h_xy)
         h_yt = self.out(h_yt)
