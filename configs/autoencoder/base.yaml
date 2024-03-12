@@ -11,7 +11,7 @@ model:
     ddconfig:
       double_z: False
       channels: 128
-      resolution: 128
+      resolution: 256
       timesteps: 16
       skip: 1
       in_channels: 1
