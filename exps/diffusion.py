@@ -66,7 +66,7 @@ def diffusion(rank, args):
     """ ROOT DIRECTORY """
     # if rank == 0:
     fn = file_name(args)
-    logger = Logger(fn)
+    logger = Logger(fn, ask=False)
     logger.log(args)
     logger.log(f'Log path: {logger.logdir}')
     rootdir = logger.logdir
@@ -96,16 +96,24 @@ def diffusion(rank, args):
     first_stage_model = ViTAutoencoder(args.embed_dim, args.ddconfig).to(device)
 
     # if rank == 0:
-    first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:2')
+    first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:4')
     first_stage_model.load_state_dict(first_stage_model_ckpt)
 
     unet = UNetModel(**args.unetconfig)
     model = DiffusionWrapper(unet).to(device)
 
-    # if rank == 0:
-    torch.save(model.state_dict(), rootdir + f'net_init.pth')
+    if os.path.exists(rootdir + f'model_90000.pth'):
+        model_ckpt = torch.load(rootdir + f'model_90000.pth', map_location='cuda:4')
+        model.load_state_dict(model_ckpt)
+        ema_model = copy.deepcopy(model)
+        print('Model loaded')
 
-    ema_model = None
+        del model_ckpt
+
+    else:
+        # if rank == 0:
+        torch.save(model.state_dict(), rootdir + f'net_init.pth')
+        ema_model = None
 
     criterion = DDPM(model, channels=args.unetconfig.in_channels,
                             image_size=args.unetconfig.image_size,

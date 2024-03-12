@@ -5,7 +5,8 @@ import torch
 
 from tools.trainer import first_stage_train
 from tools.dataloader import get_loaders
-from models.autoencoder.autoencoder_vit import ViTAutoencoder 
+# from models.autoencoder.autoencoder_vit import ViTAutoencoder
+from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
 from losses.perceptual import LPIPSWithDiscriminator
 
 from utils import file_name, Logger

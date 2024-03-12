@@ -49,13 +49,15 @@ def test_psnr(rank, model, loader, it, logger=None):
 
     model.eval()
     with torch.no_grad():
-        for n, (x, _) in enumerate(loader):
+        for n, (x, cond, _) in enumerate(loader):
+        # for n, (x, _) in enumerate(loader):
             if n > 100:
                 break
             batch_size = x.size(0)
             clip_length = x.size(1)
             x = x.float().to(device) / 127.5 - 1
-            recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'))
+            cond = cond.to(device)
+            recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'), cond)
 
             x = x.view(batch_size, -1)
             recon = recon.view(batch_size, -1)
@@ -253,7 +255,8 @@ def save_image(rank, model, loader, it, logger=None):
             if n > 0:
                 break
             real = real.float().to(device)
-            fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'))
+            cond = cond.to(device)
+            fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'), cond)
 
             # real = rearrange(real, 'b t c h w -> b t h w c') # videos
             fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b t h w c', b=real.size(0))
@@ -293,3 +296,45 @@ def save_image_ddpm(rank, ema_model, decoder, it, logger=None):
         fake = fake.swapaxes(0, 2)
         fake_nii = nib.Nifti1Image(fake, None)
         nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))
+
+def save_image_cond(rank, model, loader, it, logger=None):
+    device = torch.device('cuda', rank)
+
+    gen_idx_list = []
+
+    model.eval()
+    with torch.no_grad():
+        for n, (real, cond, idx) in enumerate(loader):
+
+            if gen_idx_list.__len__() >= 18:
+                break
+
+            if all(ele in gen_idx_list for ele in cond):
+                continue
+
+            real = real.float().to(device)
+            cond = cond.to(device)
+            fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'), cond)
+
+            # real = rearrange(real, 'b t c h w -> b t h w c') # videos
+            fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b t h w c', b=real.size(0))
+            # fake = (fake.clamp(-1, 1) + 1) * 127.5
+
+            real = real.type(torch.uint8).cpu().numpy()
+            fake = fake.type(torch.uint8).cpu().numpy()
+
+            real = real.squeeze()
+            fake = fake.squeeze()
+
+            real = real.swapaxes(1, 3)
+            fake = fake.swapaxes(1, 3)
+
+            for b_idx in range (0, real.shape[0]):
+                if not cond[b_idx] in gen_idx_list:
+                    real_nii = nib.Nifti1Image(real[b_idx, :, :, :], None)
+                    fake_nii = nib.Nifti1Image(fake[b_idx, :, :, :], None)
+
+                    nib.save(real_nii, os.path.join(logger.logdir, f'real_{it}_{cond[b_idx]}.nii.gz'))
+                    nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}_{cond[b_idx]}.nii.gz'))
+
+                    gen_idx_list.append(cond[b_idx].item())

@@ -5,6 +5,8 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from math import log, pi
 
+
+
 def rotate_every_two(x):
     x = rearrange(x, '... (d j) -> ... d j', j = 2)
     x1, x2 = x.unbind(dim = -1)
@@ -92,13 +94,13 @@ class GEGLU(nn.Module):
         return x * F.gelu(gates)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, mult = 4, dropout = 0.):
+    def __init__(self, dim, mult = 4, dropout = 0., label_conc=10):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(dim, dim * mult * 2),
+            nn.Linear(dim + label_conc, dim * mult * 2),
             GEGLU(),
             nn.Dropout(dropout),
-            nn.Linear(dim * mult, dim)
+            nn.Linear(dim * mult, dim + label_conc)
         )
 
     def forward(self, x):
@@ -123,16 +125,17 @@ class Attention(nn.Module):
         dim,
         dim_head = 64,
         heads = 8,
-        dropout = 0.
+        dropout = 0.,
+        label_conc=10,
     ):
         super().__init__()
         self.heads = heads
         self.scale = dim_head ** -0.5
         inner_dim = dim_head * heads
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        self.to_qkv = nn.Linear(dim + label_conc, inner_dim * 3, bias = False)
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
+            nn.Linear(inner_dim, dim + label_conc),
             nn.Dropout(dropout)
         )
 
@@ -176,7 +179,8 @@ class TimeSformerEncoder(nn.Module):
         attn_dropout = 0.,
         ff_dropout = 0.,
         rotary_emb = True,
-        shift_tokens = False,
+        nclass=18,
+        label_conc=10,
     ):
         super().__init__()
         assert image_size % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
@@ -188,6 +192,8 @@ class TimeSformerEncoder(nn.Module):
         self.heads = heads
         self.patch_size = patch_size
         self.to_patch_embedding = nn.Linear(patch_dim, dim)
+        self.label_embedding = nn.Embedding(nclass, num_positions)
+        self.final_fc = nn.Linear(dim + label_conc, dim)
 
         self.use_rotary_emb = rotary_emb
         if rotary_emb:
@@ -198,15 +204,15 @@ class TimeSformerEncoder(nn.Module):
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            ff = FeedForward(dim, dropout = ff_dropout)
-            time_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout)
-            spatial_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout)
+            ff = FeedForward(dim, dropout = ff_dropout, label_conc=label_conc)
+            time_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, label_conc=label_conc)
+            spatial_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, label_conc=label_conc)
 
-            time_attn, spatial_attn, ff = map(lambda t: PreNorm(dim, t), (time_attn, spatial_attn, ff))
+            time_attn, spatial_attn, ff = map(lambda t: PreNorm(dim + label_conc, t), (time_attn, spatial_attn, ff))
 
             self.layers.append(nn.ModuleList([time_attn, spatial_attn, ff]))
 
-    def forward(self, video, frame_mask = None):
+    def forward(self, video, cond, lc, frame_mask = None):
         b, f, _, h, w, *_, device, p = *video.shape, video.device, self.patch_size
         assert h % p == 0 and w % p == 0, f'height {h} and width {w} of video must be divisible by the patch size {p}'
 
@@ -220,12 +226,12 @@ class TimeSformerEncoder(nn.Module):
 
         # video to patch embeddings
         video = rearrange(video, 'b f c (h p1) (w p2) -> b (f h w) (p1 p2 c)', p1 = p, p2 = p)
-
         # print(video.shape)
 
         x = self.to_patch_embedding(video)
-
-        # print(x.shape)
+        cond = self.label_embedding(cond)
+        cond = repeat(cond, 'm n -> m n k', k=lc)
+        x = torch.cat([x, cond], 2)
 
         # positional embedding
         frame_pos_emb = None
@@ -246,7 +252,7 @@ class TimeSformerEncoder(nn.Module):
             x = ff(x) + x
             # print(x.shape)
 
-        # print(x.shape)
+        x = self.final_fc(x)
 
         return x
 
@@ -266,6 +272,8 @@ class TimeSformerDecoder(nn.Module):
         ff_dropout = 0.,
         rotary_emb = True,
         shift_tokens = False,
+        nclass=18,
+        label_conc=10,
     ):
         super().__init__()
         assert image_size % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
@@ -283,23 +291,27 @@ class TimeSformerDecoder(nn.Module):
             self.image_rot_emb = AxialRotaryEmbedding(dim_head)
         else:
             self.pos_emb = nn.Embedding(num_positions, dim)
+        self.label_embedding = nn.Embedding(nclass, num_positions)
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            ff = FeedForward(dim, dropout = ff_dropout)
-            time_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout)
-            spatial_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout)
+            ff = FeedForward(dim, dropout = ff_dropout, label_conc = label_conc)
+            time_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, label_conc = label_conc)
+            spatial_attn = Attention(dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, label_conc = label_conc)
 
-            time_attn, spatial_attn, ff = map(lambda t: PreNorm(dim, t), (time_attn, spatial_attn, ff))
+            time_attn, spatial_attn, ff = map(lambda t: PreNorm(dim + label_conc, t), (time_attn, spatial_attn, ff))
 
             self.layers.append(nn.ModuleList([time_attn, spatial_attn, ff]))
 
-    def forward(self, x, frame_mask = None):
+    def forward(self, x, cond, lc, frame_mask = None):
         device = x.device
         f, hp, wp = x.size(2), x.size(3), x.size(4)
         n = hp * wp
 
         x = rearrange(x, 'b c f h w -> b (f h w) c')
+        cond = self.label_embedding(cond)
+        cond = repeat(cond, 'm n -> m n k', k=lc)
+        x = torch.cat([x, cond], 2)
 
         # positional embedding
         frame_pos_emb = None

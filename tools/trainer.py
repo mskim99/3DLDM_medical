@@ -10,7 +10,7 @@ from torch.cuda.amp import GradScaler, autocast
 
 
 from utils import AverageMeter
-from evals.eval import test_psnr, save_image, save_image_ddpm
+from evals.eval import test_psnr, save_image, save_image_ddpm, save_image_cond
 from models.ema import LitEma
 from einops import rearrange
 
@@ -43,6 +43,9 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     model.train()
 
     for it, (x, _) in enumerate(train_loader):
+
+        # it = it + 90000
+
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
         c = None
@@ -165,36 +168,24 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     model.train()
     disc_start = criterion.discriminator_iter_start
     
-    for it, (x, _) in enumerate(train_loader):
+    for it, (x, cond, _) in enumerate(train_loader):
+    # for it, (x, _) in enumerate(train_loader):
 
-        it = it + 166000
+        # print(cond.shape)
+
+        # it = it + 120000
 
         if it > 1000000:
             break
         batch_size = x.size(0)
-        '''
-        x_test = x.type(torch.uint8).cpu().numpy()
-        print(x_test.shape)
-        x_test = x_test.squeeze()
-        print(x_test.shape)
-        x_test = x_test.swapaxes(0, 2)
-        print(x_test.shape)
-        test_nii = nib.Nifti1Image(x_test, None)
-        nib.save(test_nii, os.path.join(logger.logdir, f'test.nii.gz'))
-        '''
-        # print(x.min())
-        # print(x.max())
-        # print(x.shape)
-
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
-        # print(x.min())
-        # print(x.max())
-        # x = (x / 127.5 - 1).float()
+        cond = cond.to(device)
 
         if not disc_opt:
             with autocast():
-                x_tilde, vq_loss  = model(x)
+                # x_tilde, vq_loss = model(x)
+                x_tilde, vq_loss = model(x, cond)
                 x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                 if it % accum_iter == 0:
                     model.zero_grad()
@@ -207,7 +198,6 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
                 l1_loss = l1_criterion(x, x_tilde_ra)
                 l1_loss = 10. * l1_loss / accum_iter
 
-                # total_loss = 0.5 * (ae_loss + l1_loss)
                 total_loss = ae_loss
 
             scaler.scale(total_loss).backward()
@@ -257,7 +247,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
         if it % 2000 == 0:
             # fvd = test_ifvd(rank, model, test_loader, it, logger)
             psnr = test_psnr(rank, model, test_loader, it, logger)
-            save_image(rank, model, test_loader, it, logger)
+            # save_image(rank, model, test_loader, it, logger)
             # if logger is not None and rank == 0:
             if logger is not None:
                 logger.scalar_summary('train/ae_loss', losses['ae_loss'].average, it)
@@ -282,6 +272,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             losses['d_loss'] = AverageMeter()
 
         # if it % 2000 == 0 and rank == 0:
-        if it % 2000 == 0:
+        if it % 10000 == 0:
+            save_image_cond(rank, model, test_loader, it, logger)
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
 
