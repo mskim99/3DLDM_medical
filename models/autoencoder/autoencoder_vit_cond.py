@@ -102,24 +102,25 @@ class ViTAutoencoder(nn.Module):
 
         patch_size = 8
         self.down = 3
+        self.lc = ddconfig["label_conc"]
 
         self.encoder = TimeSformerEncoder(dim=ddconfig["channels"],
                                    image_size=ddconfig["resolution"],
                                    num_frames=ddconfig["timesteps"],
                                    depth=8,
                                    patch_size=patch_size,
-                                   label_conc=10)
+                                   label_conc=ddconfig["label_conc"])
 
         self.decoder = TimeSformerDecoder(dim=ddconfig["channels"],
                                    image_size=ddconfig["resolution"],
                                    num_frames=ddconfig["timesteps"],
                                    depth=8,
                                    patch_size=patch_size,
-                                   label_conc=10)
+                                   label_conc=ddconfig["label_conc"])
 
         self.to_pixel = nn.Sequential(
             Rearrange('b (t h w) c -> (b t) c h w', h=self.res // patch_size, w=self.res // patch_size),
-            nn.ConvTranspose2d(ddconfig["channels"]+10, 1, kernel_size=(patch_size, patch_size), stride=patch_size),
+            nn.ConvTranspose2d(ddconfig["channels"]+self.lc, 1, kernel_size=(patch_size, patch_size), stride=patch_size),
             )          
 
         self.act = nn.Sigmoid()
@@ -150,7 +151,7 @@ class ViTAutoencoder(nn.Module):
         # x: b c t h w
         b = x.size(0)
         x = rearrange(x, 'b c t h w -> b t c h w')
-        h = self.encoder(x, cond, lc=10)
+        h = self.encoder(x, cond, lc=self.lc)
         h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
@@ -197,7 +198,7 @@ class ViTAutoencoder(nn.Module):
 
     def decode(self, z, cond):
         b = z.size(0)
-        dec = self.decoder(z, cond, lc=10)
+        dec = self.decoder(z, cond, lc=self.lc)
         return 2*self.act(self.to_pixel(dec)).contiguous() -1
 
     def forward(self, input, cond):

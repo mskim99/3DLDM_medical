@@ -1,1 +1,6 @@
-diffusion : first_stage 40000
+first_stage_main_HCP_42 batch 2 lr 1e-5 c 128
+first_stage_main_CHAOS_42_3 batch 2 lr 1e-5 c 128 cond 5
+first_stage_main_CHAOS_42_4 batch 2 lr 1e-5 c 64 cond 10
+first_stage_main_CHAOS_42_5 batch 2 lr 1e-5 c 64 cond 5
+diffusion_main_CHAOS_42 (BK) batch 8 lr 1e-5 c 128
+diffusion_main_CHAOS_42_2 (BK) batch 8 lr 1e-5 c 64

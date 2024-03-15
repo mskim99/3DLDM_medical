@@ -58,6 +58,7 @@ def test_psnr(rank, model, loader, it, logger=None):
             x = x.float().to(device) / 127.5 - 1
             cond = cond.to(device)
             recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'), cond)
+            # recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'))
 
             x = x.view(batch_size, -1)
             recon = recon.view(batch_size, -1)
@@ -255,8 +256,8 @@ def save_image(rank, model, loader, it, logger=None):
             if n > 0:
                 break
             real = real.float().to(device)
-            cond = cond.to(device)
-            fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'), cond)
+            # cond = cond.to(device)
+            fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'))
 
             # real = rearrange(real, 'b t c h w -> b t h w c') # videos
             fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b t h w c', b=real.size(0))

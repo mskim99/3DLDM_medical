@@ -98,12 +98,13 @@ def diffusion(rank, args):
     # if rank == 0:
     first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:4')
     first_stage_model.load_state_dict(first_stage_model_ckpt)
+    del first_stage_model_ckpt
 
     unet = UNetModel(**args.unetconfig)
     model = DiffusionWrapper(unet).to(device)
 
-    if os.path.exists(rootdir + f'model_90000.pth'):
-        model_ckpt = torch.load(rootdir + f'model_90000.pth', map_location='cuda:4')
+    if os.path.exists(rootdir + f'model_10000.pth'):
+        model_ckpt = torch.load(rootdir + f'model_10000.pth', map_location='cuda:4')
         model.load_state_dict(model_ckpt)
         ema_model = copy.deepcopy(model)
         print('Model loaded')

@@ -44,7 +44,7 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
     for it, (x, _) in enumerate(train_loader):
 
-        # it = it + 90000
+        it = it + 10000
 
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
@@ -173,7 +173,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
         # print(cond.shape)
 
-        # it = it + 120000
+        # it = it + 140000
 
         if it > 1000000:
             break
@@ -181,7 +181,6 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
         cond = cond.to(device)
-
         if not disc_opt:
             with autocast():
                 # x_tilde, vq_loss = model(x)
@@ -274,5 +273,6 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
         # if it % 2000 == 0 and rank == 0:
         if it % 10000 == 0:
             save_image_cond(rank, model, test_loader, it, logger)
+            # save_image(rank, model, test_loader, it, logger)
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
 

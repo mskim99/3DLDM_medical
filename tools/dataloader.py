@@ -14,7 +14,7 @@ class Image3DDataset(Dataset):
                  root,
                  train,
                  resolution,
-                 n_frames=16,
+                 n_frames=128,
                  skip=1,
                  fold=1,
                  use_labels=False,    # Enable conditioning labels? False = label dimension is zero.
@@ -190,7 +190,30 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
         # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
         testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
         print(len(testset))
-
+    elif imgstr == 'CHAOS_TEST':
+        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16')
+        # train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16')
+        # test_dir = os.path.join(data_location, 'CHAOS_res_128')
+        if cond:
+            print("here")
+            timesteps *= 2  # for long generation
+        # trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
+        trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
+        print(len(trainset))
+        # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
+        testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
+        print(len(testset))
+    elif imgstr == 'HCP':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16')
+        if cond:
+            print("here")
+            timesteps *= 2  # for long generation
+        trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
+        # trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
+        print(len(trainset))
+        testset = Image3DDataset(train_dir, train=False, resolution=resolution)
+        # testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
+        print(len(testset))
     else:
         raise NotImplementedError()    
 

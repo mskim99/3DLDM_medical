@@ -43,7 +43,7 @@ for folder_path in folder_list:
     nib.save(nii_save, 'J:/Dataset/CHAOS_nibabel_norm_res_128/test/' + folder_path_name + '.nii.gz')
 '''
 '''
-path = "J:/Dataset/CHAOS_nibabel_norm/*"
+path = "J:/Dataset/HCP_1200_norm_res_128/*"
 files_list = glob.glob(path)
 s_z = 16
 
@@ -57,7 +57,7 @@ for file_path in files_list:
     # print(img_z)
     # print(z_num)
 
-    output_base_path = "J:\Dataset\CHAOS_nibabel_norm_s_16"
+    output_base_path = "J:/Dataset/HCP_1200_norm_res_128_s_16"
 
     for i in range (0, z_num):
         output_path = output_base_path + '/' + str(i)
@@ -65,16 +65,18 @@ for file_path in files_list:
             os.mkdir(output_path)
 
         img_part = img_data[:, :, (s_z*i):(s_z*(i+1))]
-        print(img_part.shape)
+        # print(img_part.shape)
 
         img_part_nib = nib.Nifti1Image(img_part, None)
-        nib.save(img_part_nib, output_base_path + '/' + str(i) + '/' + str(data_idx) + '_' + str(i) + '_s_16.nii.gz')
+        nib.save(img_part_nib, output_base_path + '/' + str(i) + '/' + str(data_idx) + '_' + str(i).zfill(4) + '_s_16.nii.gz')
         # print(i)
         # print(s_z*i)
         # print(s_z*(i+1))
         # print(img_part.shape)
-'''
 
+    print(str(data_idx) + ' finished')
+    '''
+'''
 path = "J:/Dataset/CHAOS_nibabel_norm_s_16/*/*"
 after_path = "J:/Dataset/CHAOS_nibabel_norm_res_128_s_16"
 files_path = glob.glob(path)
@@ -93,28 +95,25 @@ for file in files_path:
     img = nib.load(file)
     img_data = img.get_fdata()
 
-    img_resize = resize(img_data, [128, 128, 16])
+    img_resize = resize(img_data, [256, 256, 16])
     img_resize_nib = nib.Nifti1Image(img_resize, None)
     nib.save(img_resize_nib, after_path + '/' + idx + '/' + file_name)
+    '''
 
-
-'''
-path = "J:/Dataset/CHAOS_nibabel_norm_res_256_s_16/*/*"
+path = "J:/Dataset/HCP_1200_norm_res_128_s_16/*/*"
 files_list = glob.glob(path)
 for file in files_list:
 
     img = nib.load(file)
     img_data = img.get_fdata()
-    print(img_data.shape)
-
-    exit(0)
+    # print(img_data.shape)
 
     head, file_name = os.path.split(file)
     _, idx = os.path.split(head)
 
-    print(idx + '/' + file_name)
-    # print(idx + '/' + file_name + ' ' + str(int(idx) + 1))
-    '''
+    # print(idx + '/' + file_name)
+    print(idx + '/' + file_name + ' ' + str(int(idx) + 1))
+
 '''
 path = "J:/Program/PVDM_modify/output/first_stage_main_CHAOS_42/generated_120000.nii.gz"
 img = nib.load(path)
