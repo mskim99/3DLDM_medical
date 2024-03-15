@@ -8,6 +8,7 @@ import torch
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange, repeat
 
 from models.ddpm.diffusionmodules import (
     checkpoint,
@@ -28,7 +29,7 @@ class DiffusionWrapper(nn.Module):
 
     def forward(self, x, cond, t, c_concat: list = None, c_crossattn: list = None):
         if self.conditioning_key is None:
-            out = self.diffusion_model(x, cond, t)
+            out = self.diffusion_model(x, cond, t, lc=192)
         elif self.conditioning_key == 'concat':
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)
@@ -46,6 +47,11 @@ class DiffusionWrapper(nn.Module):
             raise NotImplementedError()
 
         return out
+
+class GEGLU(nn.Module):
+    def forward(self, x):
+        x, gates = x.chunk(2, dim = -1)
+        return x * F.gelu(gates)
 
 class TimestepBlock(nn.Module):
     """
@@ -524,6 +530,7 @@ class UNetModel(nn.Module):
         n_embed=None,                     # custom support for prediction of discrete ids into codebook of first stage vq model
         legacy=True,
         cond_model=False,
+        nclass=18,
     ):
         super().__init__()
         if use_spatial_transformer:
@@ -571,6 +578,7 @@ class UNetModel(nn.Module):
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
+        self.label_embedding = nn.Embedding(nclass, self.in_channels)
 
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
@@ -801,23 +809,14 @@ class UNetModel(nn.Module):
             #nn.LogSoftmax(dim=1)  # change to cross_entropy and produce non-normalized logits
         )
 
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
+        self.ff = nn.Sequential(
+            nn.Linear(1344, 768*2),
+            GEGLU(),
+            nn.Dropout(dropout),
+            nn.Linear(768, 768)
+        )
 
-    def convert_to_fp32(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
-
-    def forward(self, x, cond=None, timesteps=None, context=None, y=None,**kwargs):
+    def forward(self, x, cond=None, timesteps=None, context=None, y=None, lc=0):
         """
         Apply the model to an input batch.
         :param x: an [N x C x ...] Tensor of inputs.
@@ -841,20 +840,40 @@ class UNetModel(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
+        # print(h.shape)
+        # print(cond.shape)
+        cond = self.label_embedding(cond.long())
+        # print(cond.shape)
+        cond = repeat(cond, 'm n -> m n l k', l=8, k=int(lc/8))
+        # print(cond.shape)
+        '''
         if cond != None:
-            h = torch.cat([h, cond], dim=1)
+            # h = torch.cat([h, cond], dim=1)
+            h = torch.cat([h, cond], dim=2)
         elif self.cond_model:
             h = torch.cat([h, self.zeros.repeat(h.size(0), 1, 1)], dim=1)
-
+            '''
         # print(h.shape)
 
-        # TODO: treat 32 and 16 as variables
         # h_xy = h[:, :, 0:32*32].view(h.size(0), h.size(1), 32, 32)
-        h_xy = h[:, :, 0:16*24].view(h.size(0), h.size(1), 16, 24)
         # h_yt = h[:, :, 32*32:32*(32+16)].view(h.size(0), h.size(1), 16, 32)
-        h_yt = h[:, :, 16*24:(16+8)*24].view(h.size(0), h.size(1), 8, 24)
         # h_xt = h[:, :, 32*(32+16):32*(32+16+16)].view(h.size(0), h.size(1), 16, 32)
-        h_xt = h[:, :, (16+8)*24:(16+8+8)*24].view(h.size(0), h.size(1), 8, 24)
+
+        h_xy = h[:, :, 0:16 * 24].view(h.size(0), h.size(1), 16, 24)
+        h_yt = h[:, :, 16 * 24:(16 + 8) * 24].view(h.size(0), h.size(1), 8, 24)
+        h_xt = h[:, :, (16 + 8) * 24:(16 + 8 + 8) * 24].view(h.size(0), h.size(1), 8, 24)
+
+        # print(h_xy.shape)
+        # print(h_yt.shape)
+        # print(h_xt.shape)
+
+        h_xy = torch.cat([h_xy, cond], dim=2)
+        h_yt = torch.cat([h_yt, cond], dim=2)
+        h_xt = torch.cat([h_xt, cond], dim=2)
+
+        # print(h_xy.shape)
+        # print(h_yt.shape)
+        # print(h_xt.shape)
 
         for module, input_attn in zip(self.input_blocks, self.input_attns):
             h_xy = module(h_xy, emb, context)
@@ -946,5 +965,7 @@ class UNetModel(nn.Module):
 
         h = torch.cat([h_xy, h_yt, h_xt], dim=-1)
         h = h.type(x.dtype)
+
+        h = self.ff(h)
 
         return h

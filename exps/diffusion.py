@@ -6,7 +6,8 @@ import torch
 from tools.trainer import latentDDPM
 from tools.dataloader import get_loaders
 from tools.scheduler import LambdaLinearScheduler
-from models.autoencoder.autoencoder_vit import ViTAutoencoder
+# from models.autoencoder.autoencoder_vit import ViTAutoencoder
+from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
 from models.ddpm.unet import UNetModel, DiffusionWrapper
 from losses.ddpm import DDPM
 
@@ -96,7 +97,7 @@ def diffusion(rank, args):
     first_stage_model = ViTAutoencoder(args.embed_dim, args.ddconfig).to(device)
 
     # if rank == 0:
-    first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:4')
+    first_stage_model_ckpt = torch.load(args.first_model, map_location='cuda:2')
     first_stage_model.load_state_dict(first_stage_model_ckpt)
     del first_stage_model_ckpt
 
@@ -104,7 +105,7 @@ def diffusion(rank, args):
     model = DiffusionWrapper(unet).to(device)
 
     if os.path.exists(rootdir + f'model_10000.pth'):
-        model_ckpt = torch.load(rootdir + f'model_10000.pth', map_location='cuda:4')
+        model_ckpt = torch.load(rootdir + f'model_10000.pth', map_location='cuda:2')
         model.load_state_dict(model_ckpt)
         ema_model = copy.deepcopy(model)
         print('Model loaded')

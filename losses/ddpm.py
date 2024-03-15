@@ -306,6 +306,7 @@ class DDPM(nn.Module):
         for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
             self_cond = None
+            # print(cond)
             pred_noise, x_start, *_ = self.model_predictions(img, cond, time_cond, self_cond, clip_x_start = clip_denoised)
 
             if time_next < 0:
@@ -329,13 +330,13 @@ class DDPM(nn.Module):
         return img
 
     @torch.no_grad()
-    def sample(self, batch_size=16, cond=None, return_intermediates=False):
+    def sample(self, batch_size=16, cond=None, return_intermediates=False, idx_cond=None):
         image_size = self.image_size
         channels = self.channels
 
         ''' ddim sampling '''
         if self.is_ddim_sampling:
-            return self.ddim_sample((batch_size, channels, image_size), cond)
+            return self.ddim_sample((batch_size, channels, image_size), idx_cond)
         else:
             return self.p_sample_loop((batch_size, channels, image_size), cond,
                                   return_intermediates=return_intermediates)

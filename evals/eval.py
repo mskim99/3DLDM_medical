@@ -279,7 +279,7 @@ def save_image(rank, model, loader, it, logger=None):
             nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))
 
 
-def save_image_ddpm(rank, ema_model, decoder, it, logger=None):
+def save_image_ddpm(rank, ema_model, decoder, it, logger=None, idx_cond=None):
     device = torch.device('cuda', rank)
 
     diffusion_model = DDPM(ema_model,
@@ -289,12 +289,18 @@ def save_image_ddpm(rank, ema_model, decoder, it, logger=None):
                            w=0.).to(device)
 
     with torch.no_grad():
-        z = diffusion_model.sample(batch_size=1)
-        fake = decoder.decode_from_sample(z).clamp(-1, 1).cpu()
-        fake = (1 + rearrange(fake, '(b t) c h w -> b t h w c', b=1)) * 127.5
+        z = diffusion_model.sample(batch_size=8, idx_cond=idx_cond)
+        # print(z.shape)
+        fake = decoder.decode_from_sample(z, cond=idx_cond).clamp(-1, 1).cpu()
+        # print(fake.shape)
+        fake = (1 + rearrange(fake, '(b t) c h w -> b t h w c', b=8)) * 127.5
+        # print(fake.shape)
         fake = fake.type(torch.uint8).cpu().numpy()
+        # print(fake.shape)
         fake = fake.squeeze()
-        fake = fake.swapaxes(0, 2)
+        # print(fake.shape)
+        fake = fake.swapaxes(1, 3)
+        # print(fake.shape)
         fake_nii = nib.Nifti1Image(fake, None)
         nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))
 
@@ -339,3 +345,24 @@ def save_image_cond(rank, model, loader, it, logger=None):
                     nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}_{cond[b_idx]}.nii.gz'))
 
                     gen_idx_list.append(cond[b_idx].item())
+
+def save_image_ddpm_cond(rank, ema_model, decoder, it, logger=None):
+    device = torch.device('cuda', rank)
+
+    diffusion_model = DDPM(ema_model,
+                           channels=ema_model.diffusion_model.in_channels,
+                           image_size=ema_model.diffusion_model.image_size,
+                           sampling_timesteps=100,
+                           w=0.).to(device)
+
+    with torch.no_grad():
+        for idx in range (0, 18):
+            cond = torch.tensor([idx])
+            z = diffusion_model.sample(batch_size=1, cond=cond)
+            fake = decoder.decode_from_sample(z).clamp(-1, 1).cpu()
+            fake = (1 + rearrange(fake, '(b t) c h w -> b t h w c', b=1)) * 127.5
+            fake = fake.type(torch.uint8).cpu().numpy()
+            fake = fake.squeeze()
+            fake = fake.swapaxes(0, 2)
+            fake_nii = nib.Nifti1Image(fake, None)
+            nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}.nii.gz'))

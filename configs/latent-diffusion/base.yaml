@@ -1,5 +1,5 @@
 model:
-  base_learning_rate: 1.0e-5 # set to target_lr by starting main.py with '--scale_lr False'
+  base_learning_rate: 1.0e-4 # set to target_lr by starting main.py with '--scale_lr False'
   cond_model: False
   params:
     linear_start: 0.0015

@@ -8,7 +8,6 @@ import copy
 import torch
 from torch.cuda.amp import GradScaler, autocast
 
-
 from utils import AverageMeter
 from evals.eval import test_psnr, save_image, save_image_ddpm, save_image_cond
 from models.ema import LitEma
@@ -42,13 +41,14 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     first_stage_model.eval()
     model.train()
 
-    for it, (x, _) in enumerate(train_loader):
+    for it, (x, cond, _) in enumerate(train_loader):
+    # for it, (x, _) in enumerate(train_loader):
 
-        it = it + 10000
+        # it = it + 10000
 
         x = x.to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
-        c = None
+        cond = cond.to(device)
 
         # conditional free guidance training
         model.zero_grad()
@@ -84,13 +84,14 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
         else:
             if it == 0:
-                print("Unconditional model")
+                # print("Unconditional model")
+                print("Conditional model (timestamp)")
             with autocast():    
                 with torch.no_grad():
-                    z = first_stage_model.extract(x).detach()
+                    z = first_stage_model.extract(x, cond).detach()
 
-            (loss, t), loss_dict = criterion(z.float())
-
+            # (loss, t), loss_dict = criterion(z.float())
+            (loss, t), loss_dict = criterion(z.float(), cond.float())
 
         loss.backward()
         opt.step()
@@ -119,7 +120,7 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            save_image_ddpm(rank, ema_model, first_stage_model, it, logger)
+            save_image_ddpm(rank, ema_model, first_stage_model, it, logger, idx_cond=cond)
             # fvd = test_fvd_ddpm(rank, ema_model, first_stage_model, test_loader, it, logger)
 
             # if logger is not None and rank == 0:

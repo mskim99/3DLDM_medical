@@ -211,10 +211,10 @@ class ViTAutoencoder(nn.Module):
         # print(dec.shape)
         return dec, 0.
 
-    def extract(self, x):
+    def extract(self, x, cond):
         b = x.size(0)
         x = rearrange(x, 'b c t h w -> b t c h w')
-        h = self.encoder(x)
+        h = self.encoder(x, cond, lc=self.lc)
         h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
@@ -256,7 +256,7 @@ class ViTAutoencoder(nn.Module):
         ret =  torch.cat([h_xy, h_yt, h_xt], dim=-1)
         return ret 
 
-    def decode_from_sample(self, h):
+    def decode_from_sample(self, h, cond=None):
         latent_res = self.res // (2**self.down)
         h_xy = h[:, :, 0:latent_res*latent_res].view(h.size(0), h.size(1), latent_res, latent_res)
         h_yt = h[:, :, latent_res*latent_res:latent_res*(latent_res+16)].view(h.size(0), h.size(1), 16, latent_res)
@@ -273,5 +273,5 @@ class ViTAutoencoder(nn.Module):
         z = h_xy + h_yt + h_xt
 
         b = z.size(0)
-        dec = self.decoder(z)
+        dec = self.decoder(z, cond, lc=self.lc)
         return 2*self.act(self.to_pixel(dec)).contiguous()-1
