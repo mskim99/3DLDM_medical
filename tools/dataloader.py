@@ -118,10 +118,29 @@ class Image3DDatasetCond(Dataset):
         self.classes = list(natsorted(p for p in os.listdir(image_3d_root) if osp.isdir(osp.join(image_3d_root, p))))
         class_to_idx = {self.classes[i]: i for i in range(len(self.classes))}
         self.samples = make_dataset(image_3d_root, class_to_idx, ('nii.gz',), is_valid_file=None)
+
         image_3d_list = [x[0] for x in self.samples]
+        vol_num_list = [int(os.path.basename(x[0]).split('_')[0]) for x in self.samples] # Extract volume number from path
+        vol_num_list_unique = list(set(vol_num_list))
         slices_num_list = [x[1] for x in self.samples]
-        self.image_3d_list = image_3d_list
-        self.slices_num_list = slices_num_list
+
+        # Bind image_3d_list and slice_num_list with same data
+        image_3d_list_c = []
+        slices_num_list_c = []
+        for vn_l in vol_num_list_unique:
+            img_3d_list = []
+            sls_num_list = []
+            for idx, val in enumerate(vol_num_list):
+                if val == vn_l:
+                    img_3d_list.append(image_3d_list[idx])
+                    sls_num_list.append(slices_num_list[idx])
+
+            image_3d_list_c.append(img_3d_list)
+            slices_num_list_c.append(sls_num_list)
+
+        self.image_3d_list = image_3d_list_c
+        self.vol_num_list = vol_num_list
+        self.slices_num_list = slices_num_list_c
         self._use_labels = use_labels
         self._label_shape = None
         self._raw_labels = None
@@ -131,15 +150,19 @@ class Image3DDatasetCond(Dataset):
 
         frames_between_clips = skip
         print(root, frames_between_clips, n_frames)
-        # self.indices = [i for i in range(len(self.image_3d_list))]
-        self.indices = self._select_fold(self.image_3d_list, self.path, fold, train)
+        if train:
+            self.indices = [i for i in range(0, int(len(self.image_3d_list) * 0.7))]
+        else:
+            self.indices = [i for i in range(int(len(self.image_3d_list) * 0.7), len(self.image_3d_list))]
+        # self.indices = self._select_fold(self.image_3d_list, self.path, fold, train)
 
         random.seed(seed)
 
         self.size = len(self.indices)
         print(self.size)
-        self.shuffle_indices = [i for i in range(self.size)]
-        random.shuffle(self.shuffle_indices)
+        self.shuffle_indices = self.indices
+        # self.shuffle_indices = [i for i in range(self.size)]
+        # random.shuffle(self.shuffle_indices)
 
         self._need_init = True
 
@@ -164,16 +187,21 @@ class Image3DDatasetCond(Dataset):
     def __getitem__(self, idx):
         img_idx = self.indices[idx]
 
-        img_path = self.image_3d_list[img_idx]
-        slice_num = self.slices_num_list[img_idx]
+        img_paths = self.image_3d_list[img_idx]
+        slice_nums = self.slices_num_list[img_idx]
+
+        # print(img_paths)
 
         # 3D image load
-        img = nib.load(img_path)
-        img_data = img.get_fdata()
-        img_data = img_data.swapaxes(0, 2)
-        img_data = np.expand_dims(img_data, axis=1)
+        img_datas = []
+        for img_path in img_paths:
+            img = nib.load(img_path)
+            img_data = img.get_fdata()
+            img_data = img_data.swapaxes(0, 2)
+            img_data = np.expand_dims(img_data, axis=1)
+            img_datas.append(img_data)
 
-        return img_data, slice_num, idx
+        return img_datas, slice_nums, idx
 
 def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=1, seed=42,  cond=False):
 
@@ -208,11 +236,11 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
         if cond:
             print("here")
             timesteps *= 2  # for long generation
-        trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
-        # trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
+        # trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
+        trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
         print(len(trainset))
-        testset = Image3DDataset(train_dir, train=False, resolution=resolution)
-        # testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
+        # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
+        testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
         print(len(testset))
     else:
         raise NotImplementedError()    

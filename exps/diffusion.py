@@ -104,8 +104,8 @@ def diffusion(rank, args):
     unet = UNetModel(**args.unetconfig)
     model = DiffusionWrapper(unet).to(device)
 
-    if os.path.exists(rootdir + f'model_10000.pth'):
-        model_ckpt = torch.load(rootdir + f'model_10000.pth', map_location='cuda:2')
+    if os.path.exists(rootdir + f'model_40000.pth'):
+        model_ckpt = torch.load(rootdir + f'model_40000.pth', map_location='cuda:2')
         model.load_state_dict(model_ckpt)
         ema_model = copy.deepcopy(model)
         print('Model loaded')

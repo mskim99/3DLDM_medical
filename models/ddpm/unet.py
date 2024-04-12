@@ -30,6 +30,7 @@ class DiffusionWrapper(nn.Module):
     def forward(self, x, cond, t, c_concat: list = None, c_crossattn: list = None):
         if self.conditioning_key is None:
             out = self.diffusion_model(x, cond, t, lc=192)
+            # out = self.diffusion_model(x, cond, t)
         elif self.conditioning_key == 'concat':
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)

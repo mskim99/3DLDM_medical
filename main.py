@@ -66,7 +66,7 @@ def main():
         args.cond_model = config.model.cond_model
 
         # if args.n_gpus == 1:
-        diffusion(rank=2, args=args)
+        diffusion(rank=3, args=args)
         # else:
             # torch.multiprocessing.spawn(fn=diffusion, args=(args, ), nprocs=args.n_gpus)
 
@@ -82,7 +82,7 @@ def main():
         args.resume     = config.model.resume
         args.amp        = config.model.amp
         # if args.n_gpus == 1:
-        first_stage(rank=2, args=args)
+        first_stage(rank=3, args=args)
         # else:
             # torch.multiprocessing.spawn(fn=first_stage, args=(args, ), nprocs=args.n_gpus)
 
