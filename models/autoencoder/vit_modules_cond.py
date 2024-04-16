@@ -64,6 +64,28 @@ class RotaryEmbedding(nn.Module):
         freqs = rearrange(freqs, 'n d -> () n d')
         return freqs.sin(), freqs.cos()
 
+class PositionalEmbedding(nn.Module):
+    def __init__(self, max_len, d_model):
+        super().__init__()
+        self.max_len = max_len
+        self.d_model = d_model
+
+
+    def forward(self):
+        pos = torch.arange(self.max_len)[:, None]
+
+        # 각 임베딩 차원에 대해 짝수 및 홀수의 함수를 적용합니다.
+        # 짝수 차원에는 사인 함수를 적용하고, 홀수 차원에는 코사인 함수를 적용합니다.
+        input_tensor = torch.Tensor([10000])
+        angles = pos / torch.pow(input_tensor, (2 * torch.arange(self.d_model) // 2) / float(self.d_model))
+
+        # 배열에서 짝수 인덱스(2i)에는 사인을 적용하고, 홀수 인덱스(2i+1)에는 코사인을 적용합니다.
+        angles[:, 0::2] = torch.sin(angles[:, 0::2])
+        angles[:, 1::2] = torch.cos(angles[:, 1::2])
+
+        # 임베딩 행렬을 반환합니다.
+        return angles
+
 def exists(val):
     return val is not None
 
@@ -192,6 +214,7 @@ class TimeSformerEncoder(nn.Module):
         self.heads = heads
         self.patch_size = patch_size
         self.to_patch_embedding = nn.Linear(patch_dim, dim)
+        self.positional_embedding = PositionalEmbedding(8, 4096)
         self.label_embedding = nn.Embedding(nclass, num_positions)
         self.final_fc = nn.Linear(dim + label_conc, dim)
 
@@ -229,7 +252,10 @@ class TimeSformerEncoder(nn.Module):
         # print(video.shape)
 
         x = self.to_patch_embedding(video)
-        cond = self.label_embedding(cond)
+        cond_pe = self.positional_embedding()
+        cond_pe = cond_pe.to(device)
+        cond = cond_pe[cond]
+        # cond = self.label_embedding(cond)
         cond = repeat(cond, 'm n -> m n k', k=lc)
         x = torch.cat([x, cond], 2)
 
