@@ -7,6 +7,8 @@ sys.path.extend([sys.path[0][:-4], '/app'])
 
 import time
 import copy
+import math
+
 import torch
 from torch.cuda.amp import GradScaler, autocast
 
@@ -45,96 +47,84 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     model.train()
 
     for it, (x, cond, _) in enumerate(train_loader):
-        # for it, (x, _) in enumerate(train_loader):
 
-        # it = it + 40000
+        # it = it + 6000
 
-        x = x.to(device)
-        x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
-        cond = cond.to(device)
+        for x_idx in range (0, x.__len__()):
 
-        # conditional free guidance training
-        model.zero_grad()
+            x_p = x[x_idx].to(device)
+            x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
+            cond_p = cond[x_idx].to(device)
 
-        if model.diffusion_model.cond_model:
-            p = np.random.random()
+            # conditional free guidance training
+            model.zero_grad()
 
-            if p < cond_prob:
-                c, x = torch.chunk(x, 2, dim=2)
-                mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
-                mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1)
+            '''
+            if model.diffusion_model.cond_model:
+                p = np.random.random()
 
-                with autocast():
-                    with torch.no_grad():
-                        z = first_stage_model.extract(x).detach()
-                        c = first_stage_model.extract(c).detach()
-                        c = c * mask + torch.zeros_like(c).to(c.device) * (1 - mask)
+                if p < cond_prob:
+                    c, x_p = torch.chunk(x_p, 2, dim=2)
+                    mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
+                    mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1)
+
+                    with autocast():
+                        with torch.no_grad():
+                            z = first_stage_model.extract(x).detach()
+                            c = first_stage_model.extract(c).detach()
+                            c = c * mask + torch.zeros_like(c).to(c.device) * (1 - mask)
+
+                else:
+                    c, x_tmp = torch.chunk(x_p, 2, dim=2)
+                    mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
+                    mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1, 1, 1)
+
+                    clip_length = x_p.size(2) // 2
+                    prefix = random.randint(0, clip_length)
+                    x_p = x_p[:, :, prefix:prefix + clip_length, :, :] * mask + x_tmp * (1 - mask)
+                    with autocast():
+                        with torch.no_grad():
+                            z = first_stage_model.extract(x).detach()
+                            c = torch.zeros_like(z).to(device)
+
+                (loss, t), loss_dict = criterion(z.float(), c.float())
 
             else:
-                c, x_tmp = torch.chunk(x, 2, dim=2)
-                mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
-                mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1, 1, 1)
-
-                clip_length = x.size(2) // 2
-                prefix = random.randint(0, clip_length)
-                x = x[:, :, prefix:prefix + clip_length, :, :] * mask + x_tmp * (1 - mask)
-                with autocast():
-                    with torch.no_grad():
-                        z = first_stage_model.extract(x).detach()
-                        c = torch.zeros_like(z).to(device)
-
-            (loss, t), loss_dict = criterion(z.float(), c.float())
-
-        else:
-            if it == 0:
-                print("Unconditional model")
-                # print("Conditional model (timestamp)")
+                if it == 0:
+                    print("Unconditional model")
+            '''
             with autocast():
                 with torch.no_grad():
-                    z = first_stage_model.extract(x, cond).detach()
-                    # z = first_stage_model.extract(x).detach()
+                    z = first_stage_model.extract(x_p, cond_p).detach()
 
-            # (loss, t), loss_dict = criterion(z.float())
-            (loss, t), loss_dict = criterion(z.float(), cond.float())
+            (loss, t), loss_dict = criterion(z.float(), cond_p.float())
 
-        loss.backward()
-        opt.step()
+            loss.backward()
+            opt.step()
 
-        losses['diffusion_loss'].update(loss.item(), 1)
+            losses['diffusion_loss'].update(loss.item(), 1)
 
-        # ema model
-        # if it % 25 == 0 and it > 0:
-        if it % 25 == 0:
-            ema(model)
+            # ema model
+            if it % 5 == 0:
+                ema(model)
 
-        if it % 500 == 0:
-            # if logger is not None and rank == 0:
-            if logger is not None:
-                logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
+            if it % 125 == 0:
+                # if logger is not None and rank == 0:
+                if logger is not None:
+                    logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
 
-                log_('[Time %.3f] [Diffusion %f]' %
-                     (time.time() - check, losses['diffusion_loss'].average))
+                    log_('[Time %.3f] [Diffusion %f]' %
+                         (time.time() - check, losses['diffusion_loss'].average))
 
-            losses = dict()
-            losses['diffusion_loss'] = AverageMeter()
+                losses = dict()
+                losses['diffusion_loss'] = AverageMeter()
 
-        # if it % 10000 == 0 and rank == 0:
-        if it % 10000 == 0:
-            torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
-            ema.copy_to(ema_model)
-            torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            # save_image_ddpm(rank, ema_model, first_stage_model, it, logger)
-            save_image_ddpm(rank, ema_model, first_stage_model, it, logger, idx_cond=cond)
-            # fvd = test_fvd_ddpm(rank, ema_model, first_stage_model, test_loader, it, logger)
+            if it % 2000 == 0:
+                torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
+                ema.copy_to(ema_model)
+                torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
+                save_image_ddpm(rank, ema_model, first_stage_model, it, logger, idx_cond=cond_p)
 
-            # if logger is not None and rank == 0:
-            '''
-            if logger is not None:
-                logger.scalar_summary('test/fvd', fvd, it)
-
-                log_('[Time %.3f] [FVD %f]' %
-                     (time.time() - check, fvd))
-                    '''
 
 
 def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loader, first_model, fp, logger=None):
@@ -175,7 +165,10 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 380000
+        # it = it + 10000
+
+        # Store previous partitions
+        x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
 
         for x_idx in range (0, x.__len__()):
 
@@ -184,11 +177,34 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             batch_size = x[x_idx].size(0)
             x_p = x[x_idx].to(device)
             x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
+            x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
             cond_p = cond[x_idx].to(device)
+
+            # Positional Encoding
+            '''
+            pos_e = [[0.,          1.        ],
+                     [0.84147098,  0.99995   ],
+                     [0.90929743,  0.99980001],
+                     [0.14112001,  0.99955003],
+                     [0.7568025,   0.99920011],
+                     [0.95892427,  0.99875026],
+                     [-0.2794155,   0.99820054],
+                     [0.6569866,   0.997551  ]]
+            pos_e = np.array(pos_e)
+
+            cond_pos = cond[x_idx][0]
+            cond_p = torch.Tensor(pos_e[cond_pos]).to(device)
+            d_model = cond_p.shape[0]
+            angles = x_idx / torch.pow(torch.Tensor([10000, 10000]), ((2 * torch.arange(d_model) // 2) / float(d_model)))
+            cond_p[0] = torch.sin(angles[0])
+            cond_p[1] = torch.cos(angles[1])
+            cond_p = cond_p.to(device)
+            '''
+
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde, vq_loss = model(x_p, cond_p)
+                    x_tilde, vq_loss = model(x_p_concat, cond_p)
                     x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                     if it % accum_iter == 0:
                         model.zero_grad()
@@ -246,6 +262,8 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
                     disc_opt = False
                 else:
                     disc_opt = True
+
+        x_p_prev = x_p
 
         if it % 250 == 0:
             psnr = test_psnr(rank, model, test_loader, it, logger)
