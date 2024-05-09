@@ -206,51 +206,36 @@ class Image3DDatasetCond(Dataset):
 def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=1, seed=42,  cond=False):
 
     if imgstr == 'CHAOS':
-        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16')
-        # train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16')
-        # test_dir = os.path.join(data_location, 'CHAOS_res_128')
-        if cond:
-            print("here")
-            timesteps *= 2  # for long generation
-        # trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
-        trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
-        print(len(trainset))
-        # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
-        testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
-        print(len(testset))
-    elif imgstr == 'CHAOS_TEST':
-        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16')
-        # train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16')
-        # test_dir = os.path.join(data_location, 'CHAOS_res_128')
-        if cond:
-            print("here")
-            timesteps *= 2  # for long generation
-        # trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
-        trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
-        print(len(trainset))
-        # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
-        testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
-        print(len(testset))
+        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16_c')
+    elif imgstr == 'CHAOS_OL_0_5':
+        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16_ol_0_5')
+    elif imgstr == 'CHAOS_PD_2':
+        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16_pd_2')
+    elif imgstr == 'CHAOS_PD_1_RES_256':
+        train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16_pd_1')
     elif imgstr == 'HCP':
         train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16')
-        if cond:
-            print("here")
-            timesteps *= 2  # for long generation
-        # trainset = Image3DDataset(train_dir, train=True, resolution=resolution)
-        trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
-        print(len(trainset))
-        # testset = Image3DDataset(train_dir, train=False, resolution=resolution)
-        testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
-        print(len(testset))
+    elif imgstr == 'HCP_OL_0_5':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16_ol_0_5')
+    elif imgstr == 'HCP_PD_2':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16_pd_2')
+    elif imgstr == 'CT_ORG':
+        train_dir = os.path.join(data_location, 'CT-ORG_res_128_norm_s_16')
     else:
-        raise NotImplementedError()    
+        raise NotImplementedError()
+
+    if cond:
+        print("here")
+        timesteps *= 2  # for long generation
+
+    trainset = Image3DDatasetCond(train_dir, train=True, resolution=resolution)
+    print(len(trainset))
+    testset = Image3DDatasetCond(train_dir, train=False, resolution=resolution)
+    print(len(testset))
 
     trainset_sampler = InfiniteSampler(dataset=trainset, rank=0, num_replicas=n_gpus, seed=seed)
-    # trainloader = DataLoader(trainset, sampler=trainset_sampler, batch_size=batch_size // n_gpus, pin_memory=False, num_workers=4, prefetch_factor=2)
     trainloader = DataLoader(trainset, sampler=trainset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
-    
     testset_sampler = InfiniteSampler(testset, num_replicas=n_gpus, rank=0, seed=seed)
-    # testloader = DataLoader(testset, sampler=testset_sampler, batch_size=batch_size // n_gpus, pin_memory=False, num_workers=4, prefetch_factor=2)
     testloader = DataLoader(testset, sampler=testset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
 
     return trainloader, trainloader, testloader 

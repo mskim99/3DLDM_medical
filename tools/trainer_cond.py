@@ -13,7 +13,7 @@ import torch
 from torch.cuda.amp import GradScaler, autocast
 
 from utils import AverageMeter
-from evals.eval_cond import test_psnr, save_image_ddpm, save_image_cond
+from evals.eval_cond import test_psnr, save_image_ddpm_cond, save_image_cond
 from models.ema import LitEma
 from einops import rearrange
 
@@ -48,82 +48,55 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 6000
+        # it = it + 10000
+
+        x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
+        init_context = None
 
         for x_idx in range (0, x.__len__()):
 
             x_p = x[x_idx].to(device)
             x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
             cond_p = cond[x_idx].to(device)
+            x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
 
             # conditional free guidance training
             model.zero_grad()
 
-            '''
-            if model.diffusion_model.cond_model:
-                p = np.random.random()
-
-                if p < cond_prob:
-                    c, x_p = torch.chunk(x_p, 2, dim=2)
-                    mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
-                    mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1)
-
-                    with autocast():
-                        with torch.no_grad():
-                            z = first_stage_model.extract(x).detach()
-                            c = first_stage_model.extract(c).detach()
-                            c = c * mask + torch.zeros_like(c).to(c.device) * (1 - mask)
-
-                else:
-                    c, x_tmp = torch.chunk(x_p, 2, dim=2)
-                    mask = (c + 1).contiguous().view(c.size(0), -1) ** 2
-                    mask = torch.where(mask.sum(dim=-1) > 0, 1, 0).view(-1, 1, 1, 1, 1)
-
-                    clip_length = x_p.size(2) // 2
-                    prefix = random.randint(0, clip_length)
-                    x_p = x_p[:, :, prefix:prefix + clip_length, :, :] * mask + x_tmp * (1 - mask)
-                    with autocast():
-                        with torch.no_grad():
-                            z = first_stage_model.extract(x).detach()
-                            c = torch.zeros_like(z).to(device)
-
-                (loss, t), loss_dict = criterion(z.float(), c.float())
-
-            else:
-                if it == 0:
-                    print("Unconditional model")
-            '''
             with autocast():
                 with torch.no_grad():
-                    z = first_stage_model.extract(x_p, cond_p).detach()
+                    z = first_stage_model.extract(x_p_concat, cond_p).detach()
 
-            (loss, t), loss_dict = criterion(z.float(), cond_p.float())
+            (loss, t, ic), loss_dict = criterion(z.float(), cond_p.float(), init_context=init_context)
+            init_context = ic
 
             loss.backward()
             opt.step()
 
             losses['diffusion_loss'].update(loss.item(), 1)
 
-            # ema model
-            if it % 5 == 0:
-                ema(model)
+            x_p_prev = x_p.clone().detach()
 
-            if it % 125 == 0:
-                # if logger is not None and rank == 0:
-                if logger is not None:
-                    logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
+        # ema model
+        if it % 5 == 0:
+            ema(model)
 
-                    log_('[Time %.3f] [Diffusion %f]' %
-                         (time.time() - check, losses['diffusion_loss'].average))
+        if it % 125 == 0:
+            # if logger is not None and rank == 0:
+            if logger is not None:
+                logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
+
+                log_('[Time %.3f] [Diffusion %f]' %
+                     (time.time() - check, losses['diffusion_loss'].average))
 
                 losses = dict()
                 losses['diffusion_loss'] = AverageMeter()
 
-            if it % 2000 == 0:
-                torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
-                ema.copy_to(ema_model)
-                torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-                save_image_ddpm(rank, ema_model, first_stage_model, it, logger, idx_cond=cond_p)
+        if it % 2000 == 0:
+            torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
+            ema.copy_to(ema_model)
+            torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
+            save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
 
 
 
@@ -165,19 +138,19 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 10000
+        # it = it + 46250
 
         # Store previous partitions
-        x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
+        # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
 
         for x_idx in range (0, x.__len__()):
 
-            if it > 125000:
-                break
+            # if it > 125000:
+                # break
             batch_size = x[x_idx].size(0)
             x_p = x[x_idx].to(device)
             x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
-            x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
+            # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
             cond_p = cond[x_idx].to(device)
 
             # Positional Encoding
@@ -204,7 +177,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde, vq_loss = model(x_p_concat, cond_p)
+                    x_tilde, vq_loss = model(x_p, cond_p)
                     x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                     if it % accum_iter == 0:
                         model.zero_grad()
@@ -263,7 +236,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
                 else:
                     disc_opt = True
 
-        x_p_prev = x_p
+            # x_p_prev = x_p.detach().clone()
 
         if it % 250 == 0:
             psnr = test_psnr(rank, model, test_loader, it, logger)
