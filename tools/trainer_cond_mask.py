@@ -10,7 +10,7 @@ import torch
 from torch.cuda.amp import GradScaler, autocast
 
 from utils import AverageMeter
-from evals.eval_cond import test_psnr_mask, save_image_ddpm_cond, save_image_cond_mask
+from evals.eval_cond import test_psnr_mask, save_image_ddpm_cond, save_image_cond_mask, save_image_ddpm_mask
 from models.ema import LitEma
 from einops import rearrange
 
@@ -43,49 +43,41 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     first_stage_model.eval()
     model.train()
 
-    for it, (x, cond, _) in enumerate(train_loader):
+    for it, (x, m, cond, _) in enumerate(train_loader):
 
-        it = it + 36000
+        # it = it + 32500
 
-        # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
-        # init_context = None
-        # z_prev = None
+        x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
+        m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
 
         for x_idx in range (0, x.__len__()):
 
             x_p = x[x_idx].to(device)
-            x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
+            m_p = m[x_idx].to(device)
+            x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()  # videos
+            x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
+            m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
+            m_p_concat = torch.cat([m_p, m_p_prev], dim=1)
+
             cond_p = cond[x_idx].to(device)
-            # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
 
             # conditional free guidance training
             model.zero_grad()
 
             with autocast():
                 with torch.no_grad():
-                    z = first_stage_model.extract(x_p, cond_p).detach()
+                    z = first_stage_model.extract(x_p_concat, cond_p).detach()
+                    z_m = first_stage_model.extract(m_p_concat, cond_p).detach()
 
-                    # if z_prev is None:
-                        # z_prev = z.clone()
-
-            # Concatenate previous latent code (z)
-            # print('train')
-            # print(z.shape)
-            # _concat = torch.cat([z, z_prev], dim=1)
-            # print(z_concat.shape)
-            # print(cond_p.shape)
-
-            # (loss, t, ic), loss_dict = criterion(z_concat.float(), cond_p.float(), init_context=None)
-            (loss, t), loss_dict = criterion(z.float(), cond_p.float())
-            # init_context = ic
+            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), z.float(), z_m.float())
 
             loss.backward()
             opt.step()
 
             losses['diffusion_loss'].update(loss.item(), 1)
 
-            # x_p_prev = x_p.clone()
-            # z_prev = z.clone()
+            x_p_prev = x_p.clone()
+            m_p_prev = m_p.clone()
 
         # ema model
         if it % 5 == 0:
@@ -106,7 +98,7 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
+            save_image_ddpm_mask(rank, ema_model, first_stage_model, it, train_loader, logger)
 
 
 
@@ -148,7 +140,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, m, cond, _) in enumerate(train_loader):
 
-        it = it + 12500
+        it = it + 92500
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
