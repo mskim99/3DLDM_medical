@@ -148,11 +148,21 @@ class ViTAutoencoder(nn.Module):
         self.post_yt = torch.nn.Conv2d(self.embed_dim, ddconfig["channels"], 1)
 
     def encode(self, x, cond):
-        # x: b c t h w
+
         b = x.size(0)
-        x = rearrange(x, 'b c t h w -> b t c h w')
-        h = self.encoder(x, cond, lc=self.lc)
-        h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
+        # x = rearrange(x, 'b c t h w -> b t c h w')
+        # h = self.encoder(x, cond, lc=self.lc)
+        x_xy = rearrange(x, 'b c t h w -> b t c h w')
+        x_xt = rearrange(x, 'b c t h w -> b h c t w')
+        x_yt = rearrange(x, 'b c t h w -> b w c h t')
+
+        h_e_xy = self.encoder(x_xy, cond, lc=self.lc)
+        h_e_xt = self.encoder(x_xt, cond, lc=self.lc)
+        h_e_yt = self.encoder(x_yt, cond, lc=self.lc)
+
+        h_e = (h_e_xy + h_e_xt + h_e_yt) / 3.
+
+        h = rearrange(h_e, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
         n = h_xy.size(1)

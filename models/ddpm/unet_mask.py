@@ -811,7 +811,7 @@ class UNetModel(nn.Module):
         )
 
         self.ff = nn.Sequential(
-            nn.Linear(2880, 768*2),
+            nn.Linear(2112, 768*2),
             GEGLU(),
             nn.Dropout(dropout),
             nn.Linear(768, 768)
@@ -862,11 +862,11 @@ class UNetModel(nn.Module):
         h_xy = h[:, :, 0:16 * 24].view(h.size(0), h.size(1), 16, 24)
         h_yt = h[:, :, 16 * 24:(16 + 8) * 24].view(h.size(0), h.size(1), 8, 24)
         h_xt = h[:, :, (16 + 8) * 24:(16 + 8 + 8) * 24].view(h.size(0), h.size(1), 8, 24)
-
+        '''
         c_x_xy = c_x[:, :, 0:16 * 24].view(c_x.size(0), c_x.size(1), 16, 24)
         c_x_yt = c_x[:, :, 16 * 24:(16 + 8) * 24].view(c_x.size(0), c_x.size(1), 8, 24)
         c_x_xt = c_x[:, :, (16 + 8) * 24:(16 + 8 + 8) * 24].view(c_x.size(0), c_x.size(1), 8, 24)
-
+        '''
         c_m_xy = c_m[:, :, 0:16 * 24].view(c_m.size(0), c_m.size(1), 16, 24)
         c_m_yt = c_m[:, :, 16 * 24:(16 + 8) * 24].view(c_m.size(0), c_m.size(1), 8, 24)
         c_m_xt = c_m[:, :, (16 + 8) * 24:(16 + 8 + 8) * 24].view(c_m.size(0), c_m.size(1), 8, 24)
@@ -880,9 +880,9 @@ class UNetModel(nn.Module):
         print(c_m.shape)
         '''
 
-        h_xy = torch.cat([h_xy, cond, c_x_xy, c_m_xy], dim=2)
-        h_yt = torch.cat([h_yt, cond, c_x_yt, c_m_yt], dim=2)
-        h_xt = torch.cat([h_xt, cond, c_x_xt, c_m_xt], dim=2)
+        h_xy = torch.cat([h_xy, c_m_xy, cond], dim=2)
+        h_yt = torch.cat([h_yt, c_m_yt, cond], dim=2)
+        h_xt = torch.cat([h_xt, c_m_xt, cond], dim=2)
 
         # print(h_xy.shape)
         # print(h_yt.shape)
