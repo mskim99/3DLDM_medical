@@ -1,13 +1,10 @@
 import os
-import random
-import numpy as np
-import sys;
+import sys
 
 sys.path.extend([sys.path[0][:-4], '/app'])
 
 import time
 import copy
-import math
 
 import torch
 from torch.cuda.amp import GradScaler, autocast
@@ -138,7 +135,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 46250
+        # it = it + 3750
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
@@ -177,8 +174,8 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde, vq_loss = model(x_p, cond_p)
-                    x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
+                    x_tilde_ra, vq_loss = model(x_p, cond_p)
+                    # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                     if it % accum_iter == 0:
                         model.zero_grad()
 

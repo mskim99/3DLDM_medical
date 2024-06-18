@@ -74,16 +74,12 @@ class PositionalEmbedding(nn.Module):
     def forward(self):
         pos = torch.arange(self.max_len)[:, None]
 
-        # 각 임베딩 차원에 대해 짝수 및 홀수의 함수를 적용합니다.
-        # 짝수 차원에는 사인 함수를 적용하고, 홀수 차원에는 코사인 함수를 적용합니다.
         input_tensor = torch.Tensor([10000])
         angles = pos / torch.pow(input_tensor, (2 * torch.arange(self.d_model) // 2) / float(self.d_model))
 
-        # 배열에서 짝수 인덱스(2i)에는 사인을 적용하고, 홀수 인덱스(2i+1)에는 코사인을 적용합니다.
         angles[:, 0::2] = torch.sin(angles[:, 0::2])
         angles[:, 1::2] = torch.cos(angles[:, 1::2])
 
-        # 임베딩 행렬을 반환합니다.
         return angles
 
 def exists(val):
@@ -128,8 +124,26 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# attention
+class Embeddings_3D(nn.Module):
+    def __init__(self, input_dim, embed_dim, cube_size, patch_size, dropout):
+        super().__init__()
+        self.n_patches = int((cube_size[0] * cube_size[1] * cube_size[2]) / (patch_size * patch_size * patch_size))
+        self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.patch_embeddings = nn.Conv3d(in_channels=input_dim, out_channels=embed_dim,
+                                          kernel_size=patch_size, stride=patch_size)
+        self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches, embed_dim))
+        self.dropout = nn.Dropout(dropout)
 
+    def forward(self, x):
+        x = self.patch_embeddings(x)
+        x = x.flatten(2)
+        x = x.transpose(-1, -2)
+        embeddings = x + self.position_embeddings
+        embeddings = self.dropout(embeddings)
+        return embeddings
+
+# attention
 def attn(q, k, v, mask = None):
     sim = einsum('b i d, b j d -> b i j', q, k)
 
@@ -214,8 +228,9 @@ class TimeSformerEncoder(nn.Module):
         self.heads = heads
         self.patch_size = patch_size
         self.to_patch_embedding = nn.Linear(patch_dim, dim)
-        self.positional_embedding = PositionalEmbedding(8, 4096)
-        self.label_embedding = nn.Embedding(nclass, num_positions)
+        self.positional_embedding = PositionalEmbedding(4, 4096)
+        self.label_embedding = nn.Embedding(nclass, 512)
+        self.embedding_3d = Embeddings_3D(1, dim, [128, 128, 16], patch_size, 0.0)
         self.final_fc = nn.Linear(dim + label_conc, dim)
 
         self.use_rotary_emb = rotary_emb
@@ -223,7 +238,7 @@ class TimeSformerEncoder(nn.Module):
             self.frame_rot_emb = RotaryEmbedding(dim_head)
             self.image_rot_emb = AxialRotaryEmbedding(dim_head)
         else:
-            self.pos_emb = nn.Embedding(num_positions, dim)
+            self.pos_emb = nn.Embedding(num_positions, dim * 2)
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -248,25 +263,40 @@ class TimeSformerEncoder(nn.Module):
         # print(video.shape)
 
         # video to patch embeddings
+        x = self.embedding_3d(video)
+
+        '''
         video = rearrange(video, 'b f c (h p1) (w p2) -> b (f h w) (p1 p2 c)', p1 = p, p2 = p)
         # print(video.shape)
 
         x = self.to_patch_embedding(video)
-        cond_pe = self.positional_embedding()
-        cond_pe = cond_pe.to(device)
-        cond = cond_pe[cond]
-        # cond = self.label_embedding(cond)
+        '''
+
+        cond = self.label_embedding(cond)
+
+        # print(x.shape)
+        # print(cond.shape)
+
         cond = repeat(cond, 'm n -> m n k', k=lc)
+
+        # print(cond.shape)
+
         x = torch.cat([x, cond], 2)
+
+        # print(x.shape)
 
         # positional embedding
         frame_pos_emb = None
         image_pos_emb = None
+        '''
         if not self.use_rotary_emb:
             x += self.pos_emb(torch.arange(x.shape[1], device = device))
         else:
             frame_pos_emb = self.frame_rot_emb(f, device = device)
             image_pos_emb = self.image_rot_emb(hp, wp, device = device)
+            '''
+            # print(frame_pos_emb[0].shape)
+            # print(image_pos_emb[0].shape)
 
         # time and space attention
         for (time_attn, spatial_attn, ff) in self.layers:
@@ -280,6 +310,8 @@ class TimeSformerEncoder(nn.Module):
 
         x = self.final_fc(x)
 
+        # print(x.shape)
+
         return x
 
 class TimeSformerDecoder(nn.Module):
@@ -290,7 +322,7 @@ class TimeSformerDecoder(nn.Module):
         num_frames = 16,
         image_size = 128,
         patch_size = 8,
-        channels = 1,
+        channels = 2,
         depth = 8,
         heads = 8,
         dim_head = 64,
@@ -316,8 +348,8 @@ class TimeSformerDecoder(nn.Module):
             self.frame_rot_emb = RotaryEmbedding(dim_head)
             self.image_rot_emb = AxialRotaryEmbedding(dim_head)
         else:
-            self.pos_emb = nn.Embedding(num_positions, dim)
-        self.label_embedding = nn.Embedding(nclass, num_positions)
+            self.pos_emb = nn.Embedding(num_positions, dim * 2)
+        self.label_embedding = nn.Embedding(nclass, 512)
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
