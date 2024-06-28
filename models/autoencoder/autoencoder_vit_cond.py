@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
 
 from models.autoencoder.vit_modules_cond import TimeSformerEncoder, TimeSformerDecoder
 from einops import rearrange, repeat
@@ -150,8 +148,13 @@ class ViTAutoencoder(nn.Module):
     def encode(self, x, cond):
 
         b = x.size(0)
-        # x = rearrange(x, 'b c t h w -> b t c h w')
-        # h = self.encoder(x, cond, lc=self.lc)
+        x = rearrange(x, 'b c t h w -> b t c h w')
+
+        h = self.encoder(x, cond, lc=self.lc)
+        h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
+        # print(h.shape)
+
+        '''
         x_xy = rearrange(x, 'b c t h w -> b t c h w')
         x_xt = rearrange(x, 'b c t h w -> b h c t w')
         x_yt = rearrange(x, 'b c t h w -> b w c h t')
@@ -159,10 +162,13 @@ class ViTAutoencoder(nn.Module):
         h_e_xy = self.encoder(x_xy, cond, lc=self.lc)
         h_e_xt = self.encoder(x_xt, cond, lc=self.lc)
         h_e_yt = self.encoder(x_yt, cond, lc=self.lc)
-
-        h_e = (h_e_xy + h_e_xt + h_e_yt) / 3.
-
-        h = rearrange(h_e, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
+    
+        # h_e = (h_e_xy + h_e_xt + h_e_yt) / 3.
+        # h_e = rearrange(h_e, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        h_e_xy = rearrange(h_e_xy, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
+        h_e_xt = rearrange(h_e_xt, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        h_e_yt = rearrange(h_e_yt, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        '''
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
         n = h_xy.size(1)
@@ -204,19 +210,34 @@ class ViTAutoencoder(nn.Module):
         h_yt = h_yt.unsqueeze(-2).expand(-1,-1,-1,self.res//(2**self.down), -1)
         h_xt = h_xt.unsqueeze(-1).expand(-1,-1,-1,-1,self.res//(2**self.down))
 
-        return h_xy + h_yt + h_xt #torch.cat([h_xy, h_yt, h_xt], dim=1)
+        # return h_xy + h_yt + h_xt #torch.cat([h_xy, h_yt, h_xt], dim=1)
+        return h_xy + h_xt + h_yt
 
     def decode(self, z, cond):
-        b = z.size(0)
         dec = self.decoder(z, cond, lc=self.lc)
-        return 2*self.act(self.to_pixel(dec)).contiguous() -1
+        # print(dec.shape)
+        res = 2 * self.act(self.to_pixel(dec)).contiguous() -1
+        # print(res.shape)
+        return res
 
     def forward(self, input, cond):
+
         # print(input.shape)
         input = rearrange(input, 'b c (n t) h w -> (b n) c t h w', n=self.splits)
         # print(input.shape)
         z = self.encode(input, cond)
         # print(z.shape)
+        '''
+        input_wh = rearrange(input, 'b c (n t) h w -> (b n) c t h w', n=self.splits)
+        input_th = rearrange(input, 'b c (n t) h w -> (b n) c w t h', n=self.splits)
+        input_tw = rearrange(input, 'b c (n t) h w -> (b n) c h t w', n=self.splits)
+
+        z_wh = self.encode(input_wh, cond)
+        z_th = self.encode(input_th, cond)
+        z_tw = self.encode(input_tw, cond)
+
+        z = (z_wh + z_th + z_tw) / 3.
+        '''
         dec = self.decode(z, cond)
         # print(dec.shape)
         return dec, 0.

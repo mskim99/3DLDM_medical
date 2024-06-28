@@ -174,22 +174,20 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     for it, (x, cond, _) in enumerate(train_loader):
     # for it, (x, _) in enumerate(train_loader):
 
-        print(cond)
-
         # print(cond.shape)
 
         # it = it + 380000
 
         if it > 1000000:
             break
-        batch_size = x.size(0)
-        x = x.to(device)
+        batch_size = x[0].size(0)
+        x = x[0].to(device)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
-        cond = cond.to(device)
+        # cond = cond.to(device)
         if not disc_opt:
             with autocast():
-                # x_tilde, vq_loss = model(x)
-                x_tilde, vq_loss = model(x, cond)
+                x_tilde, vq_loss = model(x)
+                # x_tilde, vq_loss = model(x, cond)
                 x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
                 if it % accum_iter == 0:
                     model.zero_grad()
@@ -277,7 +275,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
         # if it % 2000 == 0 and rank == 0:
         if it % 10000 == 0:
-            save_image_cond(rank, model, test_loader, it, logger)
-            # save_image(rank, model, test_loader, it, logger)
+            # save_image_cond(rank, model, test_loader, it, logger)
+            save_image(rank, model, test_loader, it, logger)
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
 

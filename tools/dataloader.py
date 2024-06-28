@@ -335,6 +335,9 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
     elif imgstr == 'CHAOS_PD_2':
         train_dir = os.path.join(data_location, 'CHAOS_res_128_s_16_pd_2')
         train_dir_mask = os.path.join(data_location, 'CHAOS_res_128_s_16_pd_2_mask')
+    elif imgstr == 'CHAOS_32_PD_2':
+        train_dir = os.path.join(data_location, 'CHAOS_res_128_s_32_pd_2')
+        train_dir_mask = os.path.join(data_location, 'CHAOS_res_128_s_32_pd_2_mask')
     elif imgstr == 'CHAOS_PD_1_RES_256':
         train_dir = os.path.join(data_location, 'CHAOS_res_256_s_16_pd_1')
     elif imgstr == 'CHAOS_PD_2_RES_256':
@@ -343,11 +346,21 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
         train_dir = os.path.join(data_location, 'HCP_res_256_s_16_pd_2')
     elif imgstr == 'HCP':
         train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16')
+    elif imgstr == 'HCP_res_64':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_64')
     elif imgstr == 'HCP_OL_0_5':
         train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16_ol_0_5')
     elif imgstr == 'HCP_PD_2':
         train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16_pd_2')
         train_dir_mask = os.path.join(data_location, 'HCP_1200_norm_res_128_s_16_pd_2_mask')
+    elif imgstr == 'HCP_PD_2_ALL_DIR':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_xyz_64_pd_2')
+    elif imgstr == 'HCP_32_PD_2':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_s_32_pd_2')
+    elif imgstr == 'HCP_XZ_SWP_PD_2':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_xz_swp_s_16_pd_2')
+    elif imgstr == 'HCP_YZ_SWP_PD_2':
+        train_dir = os.path.join(data_location, 'HCP_1200_norm_res_128_yz_swp_s_16_pd_2')
     elif imgstr == 'CT_ORG':
         train_dir = os.path.join(data_location, 'CT-ORG_res_128_norm_s_16')
     else:
@@ -368,10 +381,12 @@ def get_loaders(rank, imgstr, resolution, timesteps, skip, batch_size=1, n_gpus=
     testset = Image3DDatasetCondMask(train_dir, train_dir_mask, train=False, resolution=resolution)
     print(len(testset))
     '''
+
     trainset_sampler = InfiniteSampler(dataset=trainset, rank=0, num_replicas=n_gpus, seed=seed)
     trainloader = DataLoader(trainset, sampler=trainset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
     testset_sampler = InfiniteSampler(testset, num_replicas=n_gpus, rank=0, seed=seed)
     testloader = DataLoader(testset, sampler=testset_sampler, batch_size=batch_size, pin_memory=False, num_workers=4, prefetch_factor=2)
+
 
     return trainloader, trainloader, testloader 
 

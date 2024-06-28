@@ -296,11 +296,11 @@ class DDPM(nn.Module):
         time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
 
         img = torch.randn([shape[0], int(shape[1]/2), shape[2]], device=device)
-        if init_context is None:
-            init_context = torch.randn(img.shape, device=device)
+        # if init_context is None:
+            # init_context = torch.randn(img.shape, device=device)
         # print(img.shape)
         # print(init_context.shape)
-        img_concat = torch.concat([img, init_context], axis=1)
+        # img_concat = torch.concat([img, init_context], axis=1)
         # print(img_concat.shape)
 
         # x_start = None

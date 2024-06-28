@@ -360,7 +360,7 @@ class DDPM(nn.Module):
 
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
-        model_out = self.model(x_noisy, cond, t, c_x, c_m)
+        model_out = self.model(x_noisy, cond, t, None, c_m)
 
         # print(x_start.shape)
 

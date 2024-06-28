@@ -10,6 +10,13 @@
             </list>
           </settings>
         </remote-mappings>
+        <remote-mappings server-id="python@sftp://ubuntu@165.246.21.113:22/home/ubuntu/miniconda3/envs/MeshGAN/bin/python3.8">
+          <settings>
+            <list>
+              <mapping local-root="$PROJECT_DIR$" remote-root="/data/jionkim/PVDM/code" />
+            </list>
+          </settings>
+        </remote-mappings>
       </list>
     </list>
   </component>

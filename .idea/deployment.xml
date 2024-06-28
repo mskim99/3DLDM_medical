@@ -2,6 +2,20 @@
 <project version="4">
   <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
+      <paths name="jionkim@165.246.42.194:22">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="jionkim@165.246.42.194:22 (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="jionkim@165.246.42.44:22">
         <serverdata>
           <mappings>
@@ -86,62 +100,6 @@
           </mappings>
         </serverdata>
       </paths>
-      <paths name="oem@165.246.42.194:22 (10)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (11)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (12)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (2) (1)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (6)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (7)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (8)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="oem@165.246.42.194:22 (9)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="root@165.246.75.42:52022">
         <serverdata>
           <mappings>
@@ -180,7 +138,7 @@
       <paths name="ubuntu@165.246.21.113:22 (2)">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/ubuntu/jionkim/PVDM_modify" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/data/jionkim/PVDM/code/" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

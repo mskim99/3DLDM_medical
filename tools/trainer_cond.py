@@ -135,7 +135,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 3750
+        # it = it + 175000
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
@@ -150,32 +150,13 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
             cond_p = cond[x_idx].to(device)
 
-            # Positional Encoding
-            '''
-            pos_e = [[0.,          1.        ],
-                     [0.84147098,  0.99995   ],
-                     [0.90929743,  0.99980001],
-                     [0.14112001,  0.99955003],
-                     [0.7568025,   0.99920011],
-                     [0.95892427,  0.99875026],
-                     [-0.2794155,   0.99820054],
-                     [0.6569866,   0.997551  ]]
-            pos_e = np.array(pos_e)
-
-            cond_pos = cond[x_idx][0]
-            cond_p = torch.Tensor(pos_e[cond_pos]).to(device)
-            d_model = cond_p.shape[0]
-            angles = x_idx / torch.pow(torch.Tensor([10000, 10000]), ((2 * torch.arange(d_model) // 2) / float(d_model)))
-            cond_p[0] = torch.sin(angles[0])
-            cond_p[1] = torch.cos(angles[1])
-            cond_p = cond_p.to(device)
-            '''
-
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde_ra, vq_loss = model(x_p, cond_p)
+                    x_tilde_ra, vq_loss = model(x_p)
                     # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
+                    # print(x_tilde_ra.shape)
+                    # print(x_p.shape)
                     if it % accum_iter == 0:
                         model.zero_grad()
 

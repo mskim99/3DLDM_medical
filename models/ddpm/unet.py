@@ -867,6 +867,7 @@ class UNetModel(nn.Module):
         # print(h_xy.shape)
         # print(h_yt.shape)
         # print(h_xt.shape)
+        # print(cond.shape)
 
         h_xy = torch.cat([h_xy, cond], dim=2)
         h_yt = torch.cat([h_yt, cond], dim=2)

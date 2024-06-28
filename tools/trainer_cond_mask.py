@@ -47,17 +47,17 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
         # it = it + 32500
 
-        x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
-        m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
+        # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
+        # m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
 
         for x_idx in range (0, x.__len__()):
 
             x_p = x[x_idx].to(device)
             m_p = m[x_idx].to(device)
             x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()  # videos
-            x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
+            # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
             m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
-            m_p_concat = torch.cat([m_p, m_p_prev], dim=1)
+            # m_p_concat = torch.cat([m_p, m_p_prev], dim=1)
 
             cond_p = cond[x_idx].to(device)
 
@@ -66,18 +66,18 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
             with autocast():
                 with torch.no_grad():
-                    z = first_stage_model.extract(x_p_concat, cond_p).detach()
-                    z_m = first_stage_model.extract(m_p_concat, cond_p).detach()
+                    z = first_stage_model.extract(x_p, cond_p).detach()
+                    z_m = first_stage_model.extract(m_p, cond_p).detach()
 
-            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), z.float(), z_m.float())
+            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), None, z_m.float())
 
             loss.backward()
             opt.step()
 
             losses['diffusion_loss'].update(loss.item(), 1)
 
-            x_p_prev = x_p.clone()
-            m_p_prev = m_p.clone()
+            # x_p_prev = x_p.clone()
+            # m_p_prev = m_p.clone()
 
         # ema model
         if it % 5 == 0:

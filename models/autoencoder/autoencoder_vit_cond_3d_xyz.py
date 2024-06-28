@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from models.autoencoder.vit_modules_cond_3d import TimeSformerEncoder, TimeSformerDecoder
+from models.autoencoder.vit_modules_cond_3d_xyz import TimeSformerEncoder, TimeSformerDecoder
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
@@ -96,14 +96,14 @@ class ViTAutoencoder(nn.Module):
                  ):
         super().__init__()
         self.splits = ddconfig["splits"]
-        self.s = 8 # 16
+        self.s = 16 # 16
 
         self.res = ddconfig["resolution"]
         self.embed_dim = embed_dim
         self.image_key = image_key
 
         patch_size = 8
-        self.down = 4 # 3
+        self.down = 3 # 3
         self.lc = ddconfig["label_conc"]
 
         self.encoder = TimeSformerEncoder(dim=ddconfig["channels"],
@@ -121,9 +121,18 @@ class ViTAutoencoder(nn.Module):
                                           label_conc=ddconfig["label_conc"])
 
         self.to_pixel = nn.Sequential(
+            # Rearrange('b (t1 t2 h w) c -> (b t2) c t1 h w', t1=2, h=self.res // patch_size, w=self.res // patch_size),
             Rearrange('b (t h w) c -> (b t) c h w', h=self.res // patch_size, w=self.res // patch_size),
+            # nn.ConvTranspose3d(ddconfig["channels"] + self.lc, 1, kernel_size=(patch_size, patch_size, patch_size), stride=patch_size),
             nn.ConvTranspose2d(ddconfig["channels"] + self.lc, 1, kernel_size=(patch_size, patch_size), stride=patch_size),
         )
+
+        self.to_pixel1 = Rearrange('b (t h w) c -> (b t) c h w', h=self.res // patch_size, w=self.res // patch_size)
+        self.to_pixel2 = nn.ConvTranspose2d(ddconfig["channels"] + self.lc, 1, kernel_size=(patch_size, patch_size), stride=patch_size)
+
+        # self.to_pixel1 = Rearrange('b (t1 t2 h w) c -> b (t2 c) t1 h w', t1=2, h=self.res // patch_size, w=self.res // patch_size)
+        # self.to_pixel2 = nn.ConvTranspose3d(256, 1, kernel_size=(8, 8, 8), stride=8)
+        # self.to_pixel3 = nn.ConvTranspose3d(128, 1, kernel_size=(2, 2, 2), stride=2)
 
         self.act = nn.Sigmoid()
         ts = torch.linspace(-1, 1, steps=self.s).unsqueeze(-1)
@@ -155,7 +164,7 @@ class ViTAutoencoder(nn.Module):
 
         h = self.encoder(x, cond, lc=self.lc)
         # h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
-        h = rearrange(h, 'b (t h w) c -> b c t h w', t=8, h=8)
+        h = rearrange(h, 'b (t h w) c -> b c t h w', t=16, h=16)
         # print(h.shape)
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
@@ -199,12 +208,18 @@ class ViTAutoencoder(nn.Module):
         h_xt = h_xt.unsqueeze(-1).expand(-1, -1, -1, -1, self.res // (2 ** self.down))
 
         return h_xy + h_yt + h_xt  # torch.cat([h_xy, h_yt, h_xt], dim=1)
-        # return h_xt
 
     def decode(self, z, cond):
         dec = self.decoder(z, cond, lc=self.lc)
-        res = 2 * self.act(self.to_pixel(dec)).contiguous() - 1
-
+        # print(dec.shape)
+        dec = self.to_pixel1(dec)
+        # print(dec.shape)
+        dec = self.to_pixel2(dec)
+        # dec = self.to_pixel3(dec)
+        # print(dec.shape)
+        # res = 2 * self.act(self.to_pixel(dec)).contiguous() - 1
+        res = 2 * self.act(dec).contiguous() - 1
+        # print(res.shape)
         return res
 
     def forward(self, input, cond):

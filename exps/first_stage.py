@@ -3,11 +3,13 @@ import json
 
 import torch
 
-# from tools.trainer import first_stage_train
 from tools.trainer_cond import first_stage_train
+# from tools.trainer_cond_mask import first_stage_train
 from tools.dataloader import get_loaders
-# from models.autoencoder.autoencoder_vit import ViTAutoencoder
-from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
+# from models.autoencoder.autoencoder import ViTAutoencoder
+# from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
+# from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
+from models.autoencoder.autoencoder_spade import ViTAutoencoder_SPADE
 from losses.perceptual import LPIPSWithDiscriminator
 
 from utils import file_name, Logger
@@ -88,7 +90,8 @@ def first_stage(rank, args):
     log_(f"Generating model")
 
     torch.cuda.set_device(rank)
-    model = ViTAutoencoder(args.embed_dim, args.ddconfig)
+    # model = ViTAutoencoder(args.embed_dim, args.ddconfig)
+    model = ViTAutoencoder_SPADE(n_embed=8192, embed_dim=3)
     model = model.to(device)
 
     criterion = LPIPSWithDiscriminator(disc_start   = args.lossconfig.params.disc_start,
@@ -106,30 +109,21 @@ def first_stage(rank, args):
 
     # if args.resume and rank == 0:
     if args.resume:
-        model_ckpt = torch.load(os.path.join(args.first_stage_folder, 'model_last.pth'))
+        model_ckpt = torch.load(os.path.join(args.first_stage_folder, 'model_last.pth'), map_location='cuda:2')
         model.load_state_dict(model_ckpt)
-        opt_ckpt = torch.load(os.path.join(args.first_stage_folder, 'opt.pth'))
+        opt_ckpt = torch.load(os.path.join(args.first_stage_folder, 'opt.pth'), map_location='cuda:2')
         opt.load_state_dict(opt_ckpt)
 
         del model_ckpt
         del opt_ckpt
 
+        print('Model loaded')
+
     # if rank == 0:
     torch.save(model.state_dict(), rootdir + f'net_init.pth')
-    '''
-    if args.n_gpus > 1:
-        model = torch.nn.parallel.DistributedDataParallel(model, 
-                                                          device_ids=[device], 
-                                                          broadcast_buffers=False,
-                                                          find_unused_parameters=False)
-        criterion = torch.nn.parallel.DistributedDataParallel(criterion,
-                                                      device_ids=[device],
-                                                      broadcast_buffers=False,
-                                                      find_unused_parameters=False)
-                                                      '''
 
     fp = args.amp
-    first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loader, args.first_model, fp, logger)
+    first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loader, args.first_stage_folder, fp, logger)
 
     # if rank == 0:
     torch.save(model.state_dict(), rootdir + f'net_meta.pth')

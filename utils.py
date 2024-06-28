@@ -183,3 +183,24 @@ def make_mixed_pairs(l, t1, t2, given_vid_real, given_vid_fake):
     dt = ret_t2 - ret_t1
 
     return torch.cat([ret_frame1, ret_frame2, dt], dim=1)
+
+
+def merge_images(image_datas):
+
+    # Case 1 : OVERLAPPING (PD_2)
+    # Resolution 128
+    image_data = np.zeros([128, 128, 128])
+    prev_idx = 0
+    for i in range(0, 9):
+        image_data_p = image_datas[i]
+
+        cur_idx = prev_idx + 16
+
+        if i == 0:
+            image_data[:, :, 0:16] = image_data_p
+        else:
+            image_data[:, :, prev_idx:prev_idx + 2] = (image_data_p[:, :, 0:1] + image_data[:, :,
+                                                                                 prev_idx:prev_idx + 2]) / 2
+            image_data[:, :, prev_idx + 2:cur_idx] = image_data_p[:, :, 2:32]
+
+    return image_data

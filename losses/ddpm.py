@@ -279,6 +279,7 @@ class DDPM(nn.Module):
         if self.parameterization == 'eps':
             pred_noise = model_output
             x_start = self.predict_start_from_noise(x, t, pred_noise)
+
             if clip_x_start:
                 #x_start = torch.nn.functional.normalize(x_start, dim=1)
                 x_start.clamp_(-1., 1.)
@@ -301,12 +302,11 @@ class DDPM(nn.Module):
         time_pairs = list(zip(times[:-1], times[1:])) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
 
         img = torch.randn(shape, device = device)
-
-        x_start = None
         for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
             self_cond = None
-            # print(cond)
+            # print(img.shape)
+            # print(cond.shape)
             pred_noise, x_start, *_ = self.model_predictions(img, cond, time_cond, self_cond, clip_x_start = clip_denoised)
 
             if time_next < 0:
@@ -321,7 +321,6 @@ class DDPM(nn.Module):
 
             noise = torch.randn_like(img)
 
-
             img = x_start * alpha_next.sqrt() + \
                   c * pred_noise + \
                   sigma * noise
@@ -330,7 +329,7 @@ class DDPM(nn.Module):
         return img
 
     @torch.no_grad()
-    def sample(self, batch_size=16, cond=None, return_intermediates=False, idx_cond=None):
+    def sample(self, batch_size=8, cond=None, return_intermediates=False, idx_cond=None):
         image_size = self.image_size
         channels = self.channels
 
@@ -362,9 +361,12 @@ class DDPM(nn.Module):
         return loss
 
     def p_losses(self, x_start, cond, t, noise=None):
+
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_out = self.model(x_noisy, cond, t)
+
+        # print(x_start.shape)
 
         loss_dict = {}
         if self.parameterization == "eps":
@@ -388,7 +390,8 @@ class DDPM(nn.Module):
 
         loss_dict.update({f'{log_prefix}/loss': loss})
 
-        return loss, loss_dict
+        return loss, loss_dict, model_out
+        # return loss, loss_dict
 
     def forward(self, x, cond=None, *args, **kwargs):
         # b, c, h, w, device, img_size, = *x.shape, x.device, self.image_size

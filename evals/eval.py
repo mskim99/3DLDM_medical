@@ -53,12 +53,12 @@ def test_psnr(rank, model, loader, it, logger=None):
         # for n, (x, _) in enumerate(loader):
             if n > 100:
                 break
-            batch_size = x.size(0)
-            clip_length = x.size(1)
-            x = x.float().to(device) / 127.5 - 1
-            cond = cond.to(device)
-            recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'), cond)
-            # recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'))
+            batch_size = x[0].size(0)
+            clip_length = x[0].size(1)
+            x = x[0].float().to(device) / 127.5 - 1
+            # cond = cond.to(device)
+            # recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'), cond)
+            recon, _ = model(rearrange(x, 'b t c h w -> b c t h w'))
 
             x = x.view(batch_size, -1)
             recon = recon.view(batch_size, -1)
@@ -223,7 +223,7 @@ def test_fvd_ddpm(rank, ema_model, decoder, loader, it, logger=None):
                 real_embeddings.append(get_fvd_logits(real, i3d=i3d, device=device))
 
             for i in range(4):
-                print(i)
+                # print(i)
                 z = diffusion_model.sample(batch_size=4)
                 fake = decoder.decode_from_sample(z).clamp(-1,1).cpu()
                 fake = (1+rearrange(fake, '(b t) c h w -> b t h w c', b=4)) * 127.5
@@ -252,10 +252,10 @@ def save_image(rank, model, loader, it, logger=None):
 
     model.eval()
     with torch.no_grad():
-        for n, (real, idx) in enumerate(loader):
+        for n, (real, idx, _) in enumerate(loader):
             if n > 0:
                 break
-            real = real.float().to(device)
+            real = real[0].float().to(device)
             # cond = cond.to(device)
             fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'))
 

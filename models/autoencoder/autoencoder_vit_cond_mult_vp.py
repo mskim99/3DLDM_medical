@@ -1,11 +1,15 @@
 import torch
 import torch.nn as nn
 
-from models.autoencoder.vit_modules_cond_3d import TimeSformerEncoder, TimeSformerDecoder
+from models.autoencoder.vit_modules_cond_mult_vp import TimeSformerEncoder, TimeSformerDecoder
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
+from time import sleep
+
+
 # siren layer
+
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -96,14 +100,14 @@ class ViTAutoencoder(nn.Module):
                  ):
         super().__init__()
         self.splits = ddconfig["splits"]
-        self.s = 8 # 16
+        self.s = ddconfig["timesteps"] // self.splits
 
         self.res = ddconfig["resolution"]
         self.embed_dim = embed_dim
         self.image_key = image_key
 
         patch_size = 8
-        self.down = 4 # 3
+        self.down = 3
         self.lc = ddconfig["label_conc"]
 
         self.encoder = TimeSformerEncoder(dim=ddconfig["channels"],
@@ -122,7 +126,8 @@ class ViTAutoencoder(nn.Module):
 
         self.to_pixel = nn.Sequential(
             Rearrange('b (t h w) c -> (b t) c h w', h=self.res // patch_size, w=self.res // patch_size),
-            nn.ConvTranspose2d(ddconfig["channels"] + self.lc, 1, kernel_size=(patch_size, patch_size), stride=patch_size),
+            nn.ConvTranspose2d(ddconfig["channels"] + self.lc, 1, kernel_size=(patch_size, patch_size),
+                               stride=patch_size),
         )
 
         self.act = nn.Sigmoid()
@@ -151,12 +156,30 @@ class ViTAutoencoder(nn.Module):
 
     def encode(self, x, cond):
         b = x.size(0)
-        x = rearrange(x, 'b c t h w -> b t c h w')
+        # x = rearrange(x, 'b c t h w -> b t c h w')
+        x = rearrange(x, 'b c t h w -> b h c t w') # xz
+        # print(x.shape)
 
         h = self.encoder(x, cond, lc=self.lc)
-        # h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
-        h = rearrange(h, 'b (t h w) c -> b c t h w', t=8, h=8)
         # print(h.shape)
+        h = rearrange(h, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        # print(h.shape)
+
+        '''
+        x_xy = rearrange(x, 'b c t h w -> b t c h w')
+        x_xt = rearrange(x, 'b c t h w -> b h c t w')
+        x_yt = rearrange(x, 'b c t h w -> b w c h t')
+
+        h_e_xy = self.encoder(x_xy, cond, lc=self.lc)
+        h_e_xt = self.encoder(x_xt, cond, lc=self.lc)
+        h_e_yt = self.encoder(x_yt, cond, lc=self.lc)
+
+        # h_e = (h_e_xy + h_e_xt + h_e_yt) / 3.
+        # h_e = rearrange(h_e, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        h_e_xy = rearrange(h_e_xy, 'b (t h w) c -> b c t h w', t=self.s, h=self.res//(2**self.down))
+        h_e_xt = rearrange(h_e_xt, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        h_e_yt = rearrange(h_e_yt, 'b (t h w) c -> b c t h w', t=self.s, h=self.res // (2 ** self.down))
+        '''
 
         h_xy = rearrange(h, 'b c t h w -> (b h w) t c')
         n = h_xy.size(1)
@@ -199,12 +222,12 @@ class ViTAutoencoder(nn.Module):
         h_xt = h_xt.unsqueeze(-1).expand(-1, -1, -1, -1, self.res // (2 ** self.down))
 
         return h_xy + h_yt + h_xt  # torch.cat([h_xy, h_yt, h_xt], dim=1)
-        # return h_xt
 
     def decode(self, z, cond):
         dec = self.decoder(z, cond, lc=self.lc)
+        # print(dec.shape)
         res = 2 * self.act(self.to_pixel(dec)).contiguous() - 1
-
+        # print(res.shape)
         return res
 
     def forward(self, input, cond):
@@ -213,6 +236,17 @@ class ViTAutoencoder(nn.Module):
         # print(input.shape)
         z = self.encode(input, cond)
         # print(z.shape)
+        '''
+        input_wh = rearrange(input, 'b c (n t) h w -> (b n) c t h w', n=self.splits)
+        input_th = rearrange(input, 'b c (n t) h w -> (b n) c w t h', n=self.splits)
+        input_tw = rearrange(input, 'b c (n t) h w -> (b n) c h t w', n=self.splits)
+
+        z_wh = self.encode(input_wh, cond)
+        z_th = self.encode(input_th, cond)
+        z_tw = self.encode(input_tw, cond)
+
+        z = (z_wh + z_th + z_tw) / 3.
+        '''
         dec = self.decode(z, cond)
         # print(dec.shape)
         return dec, 0.
