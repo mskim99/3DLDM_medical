@@ -135,7 +135,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
     for it, (x, cond, _) in enumerate(train_loader):
 
-        # it = it + 175000
+        it = it + 50000
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
@@ -147,14 +147,16 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             batch_size = x[x_idx].size(0)
             x_p = x[x_idx].to(device)
             x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()  # videos
+            # x_p = (x_p / 127.5 - 1).float()
             # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
             cond_p = cond[x_idx].to(device)
 
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde_ra, vq_loss = model(x_p)
+                    x_tilde_ra, vq_loss = model(x_p, cond_p)
                     # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
+                    # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b t c h w', b=batch_size)
                     # print(x_tilde_ra.shape)
                     # print(x_p.shape)
                     if it % accum_iter == 0:

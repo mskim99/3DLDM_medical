@@ -3,11 +3,9 @@ import json
 
 import torch
 
-from tools.trainer_cond import first_stage_train
-# from tools.trainer_cond_mask import first_stage_train
+from tools.trainer_cond_mask import first_stage_train
 from tools.dataloader import get_loaders
-# from models.autoencoder.autoencoder import ViTAutoencoder
-# from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
+# from models.autoencoder.autoencoder_vit import ViTAutoencoder
 # from models.autoencoder.autoencoder_vit_cond import ViTAutoencoder
 from models.autoencoder.autoencoder_spade import ViTAutoencoder_SPADE
 from losses.perceptual import LPIPSWithDiscriminator
@@ -48,6 +46,7 @@ def init_multiprocessing(rank, sync_device):
 
 def first_stage(rank, args):
     device = torch.device('cuda', rank)
+    torch.backends.cudnn.enabled = False
 
     temp_dir = './'
     '''
@@ -109,9 +108,9 @@ def first_stage(rank, args):
 
     # if args.resume and rank == 0:
     if args.resume:
-        model_ckpt = torch.load(os.path.join(args.first_stage_folder, 'model_last.pth'), map_location='cuda:2')
+        model_ckpt = torch.load(os.path.join(args.first_stage_folder, 'model_last.pth'), map_location='cuda:3')
         model.load_state_dict(model_ckpt)
-        opt_ckpt = torch.load(os.path.join(args.first_stage_folder, 'opt.pth'), map_location='cuda:2')
+        opt_ckpt = torch.load(os.path.join(args.first_stage_folder, 'opt.pth'), map_location='cuda:3')
         opt.load_state_dict(opt_ckpt)
 
         del model_ckpt

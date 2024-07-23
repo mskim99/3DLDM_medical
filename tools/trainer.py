@@ -182,6 +182,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
             break
         batch_size = x[0].size(0)
         x = x[0].to(device)
+        # print(x[0].shape)
         x = rearrange(x / 127.5 - 1, 'b t c h w -> b c t h w').float() # videos
         # cond = cond.to(device)
         if not disc_opt:
@@ -189,8 +190,12 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
                 x_tilde, vq_loss = model(x)
                 # x_tilde, vq_loss = model(x, cond)
                 x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
+                # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c w h t', b=batch_size) # XZ SWP
                 if it % accum_iter == 0:
                     model.zero_grad()
+
+                # print(x.shape)
+                # print(x_tilde_ra.shape)
 
                 ae_loss = criterion(vq_loss, x, x_tilde_ra,
                                     optimizer_idx=0,

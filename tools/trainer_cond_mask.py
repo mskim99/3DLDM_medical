@@ -14,6 +14,7 @@ from evals.eval_cond import test_psnr_mask, save_image_ddpm_cond, save_image_con
 from models.ema import LitEma
 from einops import rearrange
 
+import nibabel as nib
 
 def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, test_loader, scheduler, ema_model=None,
                cond_prob=0.3, logger=None):
@@ -43,9 +44,10 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     first_stage_model.eval()
     model.train()
 
-    for it, (x, m, cond, _) in enumerate(train_loader):
+    # for it, (x, m, cond, _) in enumerate(train_loader):
+    for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        # it = it + 32500
+        # it = it + 18000
 
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
         # m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
@@ -53,11 +55,16 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
         for x_idx in range (0, x.__len__()):
 
             x_p = x[x_idx].to(device)
-            m_p = m[x_idx].to(device)
-            x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()  # videos
-            # x_p_concat = torch.cat([x_p, x_p_prev], dim=1)
-            m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
-            # m_p_concat = torch.cat([m_p, m_p_prev], dim=1)
+            # m_p = m[x_idx].to(device)
+            g_p = g[x_idx].to(device)
+            x_p = rearrange(x_p / 255. + 1e-8, 'b t c h w -> b c t h w').float()
+            # x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()  # videos
+            # m_p = rearrange(m_p + 1e-8, 'b t c h w -> b c t h w').float()
+            # m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
+            g_p = rearrange(g_p + 1e-8, 'b t c h w -> b c t h w').float()
+            # g_p = rearrange(2. * g_p - 1., 'b t c h w -> b c t h w').float()
+            x_p_concat = torch.cat([x_p, g_p], dim=1)
+            # m_p_concat = torch.cat([m_p, g_p], dim=1)
 
             cond_p = cond[x_idx].to(device)
 
@@ -66,10 +73,32 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
             with autocast():
                 with torch.no_grad():
-                    z = first_stage_model.extract(x_p, cond_p).detach()
-                    z_m = first_stage_model.extract(m_p, cond_p).detach()
+                    # z = first_stage_model.encode(x_p_concat, cond_p).detach()
+                    z = first_stage_model.extract(x_p_concat, cond_p)
+                    # print(z.shape)
+                    # z = 2. * (z - z.min()) / (z.max() - z.min()) - 1.
+                    '''
+                    print(z.min())
+                    print(z.max())
+                    out = first_stage_model.decode(z, cond_p).detach()
+                    out = out[0].float().detach().cpu().numpy()
+                    out = out.squeeze()
+                    out = out.swapaxes(0, 2)
+                    print(out.shape)
+                    out_nii = nib.Nifti1Image(out, None)
+                    nib.save(out_nii, os.path.join(logger.logdir, f'out_real_{x_idx}_z_norm.nii.gz'))
+     
+                    z_out = z[0].float().detach().cpu().numpy()
+                    z_out = z_out.reshape([6, 16, 16])
+                    z_out_nii = nib.Nifti1Image(z_out, None)
+                    nib.save(z_out_nii, os.path.join(logger.logdir, f'z_real.nii.gz'))
+                    '''
 
-            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), None, z_m.float())
+                    # z_m = first_stage_model.encode(m_p_concat, cond_p).detach()
+
+            # print(z.shape)
+
+            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), None)
 
             loss.backward()
             opt.step()
@@ -98,7 +127,8 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            save_image_ddpm_mask(rank, ema_model, first_stage_model, it, train_loader, logger)
+            # save_image_ddpm_mask(rank, ema_model, first_stage_model, it, test_loader, logger)
+            save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
 
 
 
@@ -138,9 +168,10 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     model.train()
     disc_start = criterion.discriminator_iter_start
 
-    for it, (x, m, cond, _) in enumerate(train_loader):
+    # for it, (x, m, cond, _) in enumerate(train_loader):
+    for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        it = it + 92500
+        it = it + 7500
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
@@ -149,20 +180,33 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
 
             batch_size = x[x_idx].size(0)
             x_p = x[x_idx].to(device)
-            m_p = m[x_idx].to(device)
-            x_p = rearrange(x_p / 127.5 - 1, 'b t c h w -> b c t h w').float()
-            m_p = rearrange(m_p, 'b t c h w -> b c t h w').float()
-            x_p_concat = torch.cat([x_p, m_p], dim=1)
+            # m_p = m[x_idx].to(device)
+            g_p = g[x_idx].to(device)
+
+            # x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()
+            # m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
+            # g_p = rearrange(2. * g_p - 1., 'b t c h w -> b c t h w').float()
+            x_p = rearrange(x_p / 255. + 1e-8, 'b t c h w -> b c t h w').float()
+            # x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()
+            g_p = rearrange(g_p + 1e-8, 'b t c h w -> b c t h w').float()
+            # g_p = rearrange(2. * g_p - 1., 'b t c h w -> b c t h w').float()
+
+            x_p_concat = torch.cat([x_p, g_p], dim=1)
 
             cond_p = cond[x_idx].to(device)
 
             if not disc_opt:
                 with autocast():
                     # x_tilde, vq_loss = model(x)
-                    x_tilde, vq_loss = model(x_p_concat, cond_p)
-                    x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
-                    if it % accum_iter == 0:
-                        model.zero_grad()
+                    # print(x_p_concat.shape)
+                    x_tilde_ra, vq_loss = model(x_p_concat, cond_p)
+                    # print(x_tilde_ra.min())
+                    # print(x_tilde_ra.max())
+                    # print(x_tilde_ra.shape)
+                    # print(x_p.shape)
+                    # x_tilde_ra = rearrange(x_tilde, '(b t) c h w -> b c t h w', b=batch_size)
+                    # if it % accum_iter == 0:
+                    model.zero_grad()
 
                     ae_loss = criterion(vq_loss, x_p, x_tilde_ra,
                                         optimizer_idx=0,
@@ -172,7 +216,8 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
                     l1_loss = l1_criterion(x_p, x_tilde_ra)
                     l1_loss = 10. * l1_loss / accum_iter
 
-                    total_loss = ae_loss
+                    total_loss = l1_loss
+                    # total_loss = l1_loss
 
                 scaler.scale(total_loss).backward()
 

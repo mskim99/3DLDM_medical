@@ -260,7 +260,8 @@ def save_image(rank, model, loader, it, logger=None):
             fake, _ = model(rearrange(real / 127.5 - 1, 'b t c h w -> b c t h w'))
 
             # real = rearrange(real, 'b t c h w -> b t h w c') # videos
-            fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b t h w c', b=real.size(0))
+            # fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b t h w c', b=real.size(0))
+            fake = rearrange((fake.clamp(-1,1) + 1) * 127.5, '(b t) c h w -> b c w h t', b=real.size(0)) # XZ SWP
             # fake = (fake.clamp(-1, 1) + 1) * 127.5
 
             real = real.type(torch.uint8).cpu().numpy()

@@ -110,8 +110,8 @@ class DDPM(nn.Module):
         self.clip_denoised = clip_denoised
         self.log_every_t = log_every_t
         self.first_stage_key = first_stage_key
-        # self.image_size = 2048  # TODO: treat as argument (res*res + res*s*2)
-        self.image_size = 768
+        # self.image_size = 2048, 768  # TODO: treat as argument (res*res + res*s*2)
+        self.image_size = 512
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = model
@@ -336,6 +336,17 @@ class DDPM(nn.Module):
             return self.p_sample_loop((batch_size, channels, image_size), cond,
                                       return_intermediates=return_intermediates)
 
+    def sample_3d(self, batch_size=3, channels=1, cond=None, return_intermediates=False, idx_cond=None, mask=None):
+        image_size = self.image_size
+        # channels = self.channels
+
+        ''' ddim sampling '''
+        if self.is_ddim_sampling:
+            return self.ddim_sample((batch_size, channels, image_size), idx_cond, mask)
+        else:
+            return self.p_sample_loop((batch_size, channels, image_size), cond,
+                                      return_intermediates=return_intermediates)
+
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         return (extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
@@ -372,12 +383,17 @@ class DDPM(nn.Module):
         else:
             raise NotImplementedError(f"Paramterization {self.parameterization} not yet supported")
 
+        target = target.view(model_out.size())
+
         loss = self.get_loss(model_out, target, mean=False).mean(dim=[1, 2])
 
         log_prefix = 'train' if self.training else 'val'
 
         loss_dict.update({f'{log_prefix}/loss_simple': loss.mean()})
         loss_simple = loss.mean() * self.l_simple_weight
+
+        # print(self.lvlb_weights[t].shape)
+        # print(loss.shape)
 
         loss_vlb = (self.lvlb_weights[t] * loss).mean()
         loss_dict.update({f'{log_prefix}/loss_vlb': loss_vlb})
