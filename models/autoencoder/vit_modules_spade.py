@@ -216,7 +216,7 @@ class Encoder(nn.Module):
                                         z_channels,
                                         kernel_size=3,
                                         stride=1,
-                                        padding=1) 
+                                        padding=1)
 
     def forward(self, x, cond):
 
@@ -245,42 +245,7 @@ class Encoder(nn.Module):
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)
-        h = torch.tanh(h)
         h = self.conv_out(h)
-        return h
-
-    def extract(self, x, cond):
-
-        # timestep embedding
-        temb = None
-
-        cond = self.label_embedding(cond)
-        cond = repeat(cond, 'm n -> m n k', k=16)
-        cond = rearrange(cond, 'b (w h c) t -> b c t w h', w=128, h=128)
-
-        x = torch.cat([x, cond], axis=1)
-
-        # downsampling
-        hs = [self.conv_in(x)]
-        for i_level in range(self.num_resolutions):
-            for i_block in range(self.num_res_blocks):
-                h = self.down[i_level].block[i_block](hs[-1], temb)
-                hs.append(h)
-            if i_level != self.num_resolutions-1:
-                hs.append(self.down[i_level].downsample(hs[-1]))
-
-        # middle
-        h = hs[-1]
-        h = self.mid.block_1(h, temb)
-
-        # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = torch.tanh(h)
-        return h
-
-    def channel_conv_out(self, x):
-        h = self.conv_out(x)
         return h
 
 
@@ -297,7 +262,7 @@ class Decoder(nn.Module):
         self.in_channels = in_channels
         self.give_pre_end = give_pre_end
 
-        self.label_embedding = nn.Embedding(9, 1536)
+        self.label_embedding = nn.Embedding(9, 16384)
 
         # compute in_ch_mult, block_in and curr_res at lowest res
         block_in = ch*ch_mult[self.num_resolutions-1]
@@ -307,7 +272,7 @@ class Decoder(nn.Module):
             self.z_shape, np.prod(self.z_shape)))
 
         # z to block_in
-        self.conv_in = torch.nn.Conv3d(z_channels*2,
+        self.conv_in = torch.nn.Conv3d(z_channels+32,
                                        block_in,
                                        kernel_size=3,
                                        stride=1,
@@ -364,6 +329,8 @@ class Decoder(nn.Module):
         # print(cond.shape)
         # print(z.shape)
 
+        # print(z.shape)
+        # print(cond.shape)
         z = torch.cat([z, cond], axis=1)
         # print(z.shape)
 
