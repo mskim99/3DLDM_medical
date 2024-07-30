@@ -105,13 +105,14 @@ class DDPM(nn.Module):
         super().__init__()
         assert parameterization in ["eps", "x0"], 'currently only supporting "eps" and "x0"'
         self.parameterization = parameterization
-        print(f"{self.__class__.__name__}: Running in {self.parameterization}-prediction mode")
+        # print(f"{self.__class__.__name__}: Running in {self.parameterization}-prediction mode")
         self.cond_stage_model = None
         self.clip_denoised = clip_denoised
         self.log_every_t = log_every_t
         self.first_stage_key = first_stage_key
         # self.image_size = 2048, 768  # TODO: treat as argument (res*res + res*s*2)
-        self.image_size = 512
+        # self.image_size = 512 # res 128
+        self.image_size = 64  # res 64
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = model
@@ -300,8 +301,7 @@ class DDPM(nn.Module):
         for time, time_next in tqdm(time_pairs, desc='sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
             self_cond = img.clone()
-            # print(img.shape)
-            # print(cond.shape)
+
             pred_noise, x_start, *_ = self.model_predictions(img, cond, time_cond, self_cond, mask=mask,
                                                              clip_x_start=clip_denoised)
 
@@ -321,7 +321,41 @@ class DDPM(nn.Module):
                   c * pred_noise + \
                   sigma * noise
 
-        # img = unnormalize_to_zero_to_one(img)
+        return img
+
+    def ddim_sample_no_tqdm(self, shape, cond, mask, clip_denoised=True):
+        batch, device, total_timesteps, sampling_timesteps, eta = shape[
+                                                                      0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.ddim_sampling_eta
+
+        times = torch.linspace(-1, total_timesteps - 1,
+                               steps=sampling_timesteps + 1)  # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
+        times = list(reversed(times.int().tolist()))
+        time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+
+        img = torch.randn(shape, device=device)
+        for time, time_next in time_pairs:
+            time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
+            self_cond = img.clone()
+
+            pred_noise, x_start, *_ = self.model_predictions(img, cond, time_cond, self_cond, mask=mask,
+                                                             clip_x_start=clip_denoised)
+
+            if time_next < 0:
+                img = x_start
+                continue
+
+            alpha = self.alphas_cumprod[time]
+            alpha_next = self.alphas_cumprod[time_next]
+
+            sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+            c = (1 - alpha_next - sigma ** 2).sqrt()
+
+            noise = torch.randn_like(img)
+
+            img = x_start * alpha_next.sqrt() + \
+                  c * pred_noise + \
+                  sigma * noise
+
         return img
 
     @torch.no_grad()
@@ -336,16 +370,15 @@ class DDPM(nn.Module):
             return self.p_sample_loop((batch_size, channels, image_size), cond,
                                       return_intermediates=return_intermediates)
 
-    def sample_3d(self, batch_size=3, channels=1, cond=None, return_intermediates=False, idx_cond=None, mask=None):
+    def sample_3d(self, batch_size=3, channels=1, cond=None, return_intermediates=False, idx_cond=None, mask=None, tqdm=True):
         image_size = self.image_size
         # channels = self.channels
 
-        ''' ddim sampling '''
-        if self.is_ddim_sampling:
+        if tqdm:
             return self.ddim_sample((batch_size, channels, image_size), idx_cond, mask)
         else:
-            return self.p_sample_loop((batch_size, channels, image_size), cond,
-                                      return_intermediates=return_intermediates)
+            return self.ddim_sample_no_tqdm((batch_size, channels, image_size), idx_cond, mask)
+
 
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -372,8 +405,6 @@ class DDPM(nn.Module):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_out = self.model(x_noisy, cond, t, None, c_m)
-
-        # print(x_start.shape)
 
         loss_dict = {}
         if self.parameterization == "eps":

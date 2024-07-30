@@ -10,14 +10,14 @@ import torch
 from torch.cuda.amp import GradScaler, autocast
 
 from utils import AverageMeter
-from evals.eval_cond import test_psnr_mask, save_image_ddpm_cond, save_image_cond_mask, save_image_ddpm_mask
+from evals.eval_cond import test_psnr_mask, save_image_ddpm_cond, save_image_ddpm_cond_ae, save_image_cond_mask, save_image_ddpm_mask, z_list_gen
 from models.ema import LitEma
 from einops import rearrange
 
 import nibabel as nib
 
 def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, test_loader, scheduler, ema_model=None,
-               cond_prob=0.3, logger=None):
+               cond_prob=0.3, logger=None, ddpm_ae=None, ddpm_ae_opt=None):
     if logger is None:
         log_ = print
     else:
@@ -30,7 +30,10 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
     losses = dict()
     losses['diffusion_loss'] = AverageMeter()
+    losses['cont_loss'] = AverageMeter()
     check = time.time()
+
+    l1_loss = torch.nn.L1Loss()
 
     if ema_model == None:
         ema_model = copy.deepcopy(model)
@@ -42,15 +45,18 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
         ema_model.eval()
 
     first_stage_model.eval()
+    # ddpm_ae.train()
     model.train()
 
     # for it, (x, m, cond, _) in enumerate(train_loader):
     for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        # it = it + 18000
+        # it = it + 60000
 
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
         # m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
+
+        z_list_real = []
 
         for x_idx in range (0, x.__len__()):
 
@@ -75,8 +81,8 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
                 with torch.no_grad():
                     # z = first_stage_model.encode(x_p_concat, cond_p).detach()
                     z = first_stage_model.extract(x_p_concat, cond_p)
-                    # print(z.shape)
-                    # z = 2. * (z - z.min()) / (z.max() - z.min()) - 1.
+                    z_list_real.append(z)
+                    # z = first_stage_model.extract_dep(x_p_concat, cond_p)
                     '''
                     print(z.min())
                     print(z.max())
@@ -87,17 +93,24 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
                     print(out.shape)
                     out_nii = nib.Nifti1Image(out, None)
                     nib.save(out_nii, os.path.join(logger.logdir, f'out_real_{x_idx}_z_norm.nii.gz'))
-     
+  
                     z_out = z[0].float().detach().cpu().numpy()
-                    z_out = z_out.reshape([6, 16, 16])
+                    z_out = z_out.reshape([32, 8, 8])
                     z_out_nii = nib.Nifti1Image(z_out, None)
-                    nib.save(z_out_nii, os.path.join(logger.logdir, f'z_real.nii.gz'))
+                    nib.save(z_out_nii, os.path.join(logger.logdir, f'z_real_{x_idx}.nii.gz'))
                     '''
-
                     # z_m = first_stage_model.encode(m_p_concat, cond_p).detach()
 
-            # print(z.shape)
+            '''
+            z_real_enc = ddpm_ae.encode(z)
+            z_real_dec = ddpm_ae.decode(z_real_enc)
+            ae_loss = l1_loss(z, z_real_dec)
 
+            ae_loss.backward()
+            ddpm_ae_opt.step()
+            
+            ddpm_ae.zero_grad()
+            '''
             (loss, t), loss_dict = criterion(z.float(), cond_p.float(), None)
 
             loss.backward()
@@ -112,23 +125,46 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
         if it % 5 == 0:
             ema(model)
 
+            z_list_fake = z_list_gen(rank, ema_model)
+
+            cont_loss = 0.
+            for i in range(0, 8):
+                value_fake = l1_loss(z_list_fake[i + 1], z_list_fake[i])
+                value_real = l1_loss(z_list_real[i + 1], z_list_real[i])
+                cont_loss += abs(value_fake - value_real)
+
+            cont_loss.backward()
+            opt.step()
+
+            losses['cont_loss'].update(cont_loss.item(), 1)
+
         if it % 125 == 0:
+        # if it % 5 == 0:
             # if logger is not None and rank == 0:
             if logger is not None:
                 logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
+                logger.scalar_summary('train/cont_loss', losses['cont_loss'].average, it)
 
-                log_('[Time %.3f] [Diffusion %f]' %
-                     (time.time() - check, losses['diffusion_loss'].average))
+                '''
+                log_('[Time %.3f] [Diffusion %f] [AE %f]' %
+                     (time.time() - check, losses['diffusion_loss'].average, losses['ae_loss'].average))
+                    '''
+
+                log_('[Time %.3f] [Diffusion %f] [Cont %f]' %
+                     (time.time() - check, losses['diffusion_loss'].average, losses['cont_loss'].average))
 
                 losses = dict()
                 losses['diffusion_loss'] = AverageMeter()
+                losses['cont_loss'] = AverageMeter()
 
         if it % 2000 == 0:
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
+            # torch.save(ddpm_ae.state_dict(), rootdir + f'ae_model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
             # save_image_ddpm_mask(rank, ema_model, first_stage_model, it, test_loader, logger)
             save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
+            # save_image_ddpm_cond_ae(rank, ema_model, first_stage_model, ddpm_ae, it, logger)
 
 
 
@@ -171,7 +207,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     # for it, (x, m, cond, _) in enumerate(train_loader):
     for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        it = it + 7500
+        it = it + 52500
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()

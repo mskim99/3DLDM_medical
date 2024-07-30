@@ -812,11 +812,13 @@ class UNetModel(nn.Module):
 
         self.ff = nn.Sequential(
             # nn.Linear(1344, 768*2),
-            nn.Linear(1280, 512 * 2),
+            # nn.Linear(1280, 512 * 2), # res 128
+            nn.Linear(160, 64 * 2), # res 64
             GEGLU(),
             nn.Dropout(dropout),
             # nn.Linear(768, 768)
-            nn.Linear(512, 512)
+            # nn.Linear(512, 512) # res 128
+            nn.Linear(64, 64) # res 64
         )
 
     def forward(self, x, cond=None, timesteps=None, context=None, y=None, lc=0):
@@ -845,10 +847,12 @@ class UNetModel(nn.Module):
         h = x.type(self.dtype)
         # print(h.shape)
         # h = h.view(h.size(0), 2, 768)
-        h = h.view(h.size(0), 1024, 512)
+        # h = h.view(h.size(0), 32, 512)
+        h = h.view(h.size(0), 32, 64)
         cond = self.label_embedding(cond.long())
         # cond = repeat(cond, 'm n -> m n l k', l=8, k=int(lc/8))
-        cond = repeat(cond, 'm n -> m n l k', l=16, k=16)
+        # cond = repeat(cond, 'm n -> m n l k', l=16, k=16)
+        cond = repeat(cond, 'm n -> m n l k', l=4, k=8)
 
 
         ''''
@@ -857,9 +861,20 @@ class UNetModel(nn.Module):
         h_xt = h[:, :, (16 + 8) * 24:(16 + 8 + 8) * 24].view(h.size(0), h.size(1), 8, 24)
         '''
 
+        # res 128
+        '''
         h_xy = h[:, :, 0:16 * 16].view(h.size(0), h.size(1), 16, 16)
         h_yt = h[:, :, 16 * 16:(16 + 8) * 16].view(h.size(0), h.size(1), 8, 16)
         h_xt = h[:, :, (16 + 8) * 16:(16 + 8 + 8) * 16].view(h.size(0), h.size(1), 8, 16)
+        '''
+
+        # res 64
+        h_xy = h[:, :, 0:4 * 8].view(h.size(0), h.size(1), 4, 8)
+        h_yt = h[:, :, 4 * 8:(4 + 2) * 8].view(h.size(0), h.size(1), 2, 8)
+        h_xt = h[:, :, (4 + 2) * 8:(4 + 2 + 2) * 8].view(h.size(0), h.size(1), 2, 8)
+
+        # print(h_xy.shape)
+        # print(cond.shape)
 
         h_xy = torch.cat([h_xy, cond], dim=2)
         h_yt = torch.cat([h_yt, cond], dim=2)
@@ -944,6 +959,6 @@ class UNetModel(nn.Module):
         h = h.type(x.dtype)
 
         h = self.ff(h)
-        h = torch.tanh(h)
+        # h = torch.tanh(h)
 
         return h

@@ -178,7 +178,7 @@ class Encoder(nn.Module):
                                        stride=1,
                                        padding=1)
 
-        self.label_embedding = nn.Embedding(9, 16384)
+        self.label_embedding = nn.Embedding(9, 4096) # 16384
 
         curr_res = resolution
         in_ch_mult = (1,)+tuple(ch_mult)
@@ -224,8 +224,11 @@ class Encoder(nn.Module):
         temb = None
 
         cond = self.label_embedding(cond)
-        cond = repeat(cond, 'm n -> m n k', k=16)
-        cond = rearrange(cond, 'b (w h c) t -> b c t w h', w=128, h=128)
+        cond = repeat(cond, 'm n -> m n k', k=8) # 16
+        cond = rearrange(cond, 'b (w h c) t -> b c t w h', w=64, h=64) # 128
+
+        # print(x.shape)
+        # print(cond.shape)
 
         x = torch.cat([x, cond], axis=1)
 
@@ -248,6 +251,42 @@ class Encoder(nn.Module):
         h = self.conv_out(h)
         return h
 
+    def extract_dep(self, x, cond):
+
+        # timestep embedding
+        temb = None
+
+        cond = self.label_embedding(cond)
+        cond = repeat(cond, 'm n -> m n k', k=8) # 16
+        cond = rearrange(cond, 'b (w h c) t -> b c t w h', w=64, h=64) # 128
+
+        # print(x.shape)
+        # print(cond.shape)
+
+        x = torch.cat([x, cond], axis=1)
+
+        # downsampling
+        hs = [self.conv_in(x)]
+        for i_level in range(self.num_resolutions):
+            for i_block in range(self.num_res_blocks):
+                h = self.down[i_level].block[i_block](hs[-1], temb)
+                hs.append(h)
+            if i_level != self.num_resolutions-1:
+                hs.append(self.down[i_level].downsample(hs[-1]))
+
+        # middle
+        h = hs[-1]
+        h = self.mid.block_1(h, temb)
+
+        # end
+        h = self.norm_out(h)
+        h = nonlinearity(h)
+        return h
+
+    def channel_conv_out(self, h):
+        h = self.conv_out(h)
+        return h
+
 
 class Decoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
@@ -262,7 +301,7 @@ class Decoder(nn.Module):
         self.in_channels = in_channels
         self.give_pre_end = give_pre_end
 
-        self.label_embedding = nn.Embedding(9, 16384)
+        self.label_embedding = nn.Embedding(9, 4096) # 16384
 
         # compute in_ch_mult, block_in and curr_res at lowest res
         block_in = ch*ch_mult[self.num_resolutions-1]
@@ -272,11 +311,11 @@ class Decoder(nn.Module):
             self.z_shape, np.prod(self.z_shape)))
 
         # z to block_in
-        self.conv_in = torch.nn.Conv3d(z_channels+32,
+        self.conv_in = torch.nn.Conv3d(z_channels*2,
                                        block_in,
                                        kernel_size=3,
                                        stride=1,
-                                       padding=1)
+                                       padding=1) # z_channels+32
 
         # middle
         self.mid = nn.Module()
@@ -325,7 +364,7 @@ class Decoder(nn.Module):
 
         cond = self.label_embedding(cond)
         # print(cond.shape)
-        cond = rearrange(cond, 'b (w h c t) -> b c t w h', t=2, w=16, h=16) # 2,16,16 > res 128 128 16
+        cond = rearrange(cond, 'b (w h c t) -> b c t w h', t=1, w=8, h=8) # 2,16,16 > res 128 128 16
         # print(cond.shape)
         # print(z.shape)
 

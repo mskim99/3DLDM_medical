@@ -1,5 +1,7 @@
 import sys
 
+import numpy as np
+
 sys.path.extend(['.', 'src'])
 import torch
 from utils import AverageMeter
@@ -9,6 +11,33 @@ from losses.ddpm_mask import DDPM
 import os
 import nibabel as nib
 
+def z_list_gen(rank, ema_model):
+
+    device = torch.device('cuda', rank)
+    l1_loss = torch.nn.L1Loss()
+    diffusion_model = DDPM(ema_model,
+                           channels=ema_model.diffusion_model.in_channels,
+                           image_size=ema_model.diffusion_model.image_size,
+                           sampling_timesteps=10,
+                           w=0.).to(device)
+
+    z_list = []
+    # cont_loss_value = 0.
+    for idx in range(0, 9):
+        idx_cond = torch.tensor([idx]).to(device)
+        z = diffusion_model.sample_3d(batch_size=1, channels=32, idx_cond=idx_cond, tqdm=False)
+        z_list.append(z)
+
+    '''
+    for i in range (0, 8):
+        value = l1_loss(z_list[i+1], z_list[i])
+        cont_loss_value += value
+
+    cont_loss_value = cont_loss_value / 8.
+    return cont_loss_value
+    '''
+
+    return z_list
 
 def test_psnr(rank, model, loader, it, logger=None):
     device = torch.device('cuda', rank)
@@ -247,9 +276,16 @@ def save_image_ddpm_cond(rank, ema_model, decoder, it, logger=None):
         for idx in range(0, 9):
             idx_cond = torch.tensor([idx]).to(device)
             # z = diffusion_model.sample(batch_size=1, idx_cond=idx_cond, init_context=init_context)
-            z = diffusion_model.sample_3d(batch_size=1, channels=1024, idx_cond=idx_cond)
+            z = diffusion_model.sample_3d(batch_size=1, channels=32, idx_cond=idx_cond)
+            '''
+            z_out = z.float().detach().cpu().numpy()
+            z_out = z_out.reshape([32, 8, 8])
+            z_out_nii = nib.Nifti1Image(z_out, None)
+            nib.save(z_out_nii, os.path.join(logger.logdir, f'z_fake_{it}_{idx_cond[0]}.nii.gz'))
+            '''
             # print(z.shape)
-            z = z.view(1, 1024, 2, 16, 16)
+            z = z.view(1, 32, 1, 8, 8)
+            z[:, :, :, 0:1, 0:1] = 0.
             # print('eval')
             # print(z.shape)
             # if z_prev is None:
@@ -272,6 +308,34 @@ def save_image_ddpm_cond(rank, ema_model, decoder, it, logger=None):
             fake_nii = nib.Nifti1Image(fake, None)
             nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}_{idx_cond[0]}.nii.gz'))
             # z_prev = z.clone()
+
+
+def save_image_ddpm_cond_ae(rank, ema_model, decoder, ae_model, it, logger=None):
+    device = torch.device('cuda', rank)
+
+    diffusion_model = DDPM(ema_model,
+                           channels=ema_model.diffusion_model.in_channels,
+                           image_size=ema_model.diffusion_model.image_size,
+                           sampling_timesteps=100,
+                           w=0.).to(device)
+
+
+    with torch.no_grad():
+
+        for idx in range(0, 9):
+            idx_cond = torch.tensor([idx]).to(device)
+            z = diffusion_model.sample_3d(batch_size=1, channels=32, idx_cond=idx_cond)
+            # z = z.view(1, 32, 2, 16, 16) # res 128
+            z = z.view(1, 32, 2, 16, 16) # res 64
+            # z_dec = ae_model.decode(z)
+            fake = decoder.decode_from_sample(z, cond=idx_cond).clamp(0, 1).cpu()
+
+            fake = (rearrange(fake, 'b t c h w -> b t h w c', b=1)) * 255.
+            # print(fake.shape)
+            fake = fake.type(torch.uint8).cpu().numpy()
+            fake = fake.squeeze()
+            fake_nii = nib.Nifti1Image(fake, None)
+            nib.save(fake_nii, os.path.join(logger.logdir, f'generated_{it}_{idx_cond[0]}.nii.gz'))
 
 
 def save_image_ddpm_mask(rank, ema_model, first_stage_model, it, loader, logger=None):
