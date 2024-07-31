@@ -30,7 +30,8 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
 
     losses = dict()
     losses['diffusion_loss'] = AverageMeter()
-    losses['cont_loss'] = AverageMeter()
+    # losses['cont_loss'] = AverageMeter()
+    # losses['total_loss'] = AverageMeter()
     check = time.time()
 
     l1_loss = torch.nn.L1Loss()
@@ -51,37 +52,38 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
     # for it, (x, m, cond, _) in enumerate(train_loader):
     for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        # it = it + 60000
+        # it = it + 12000
 
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
         # m_p_prev = rearrange(torch.zeros(m[0].shape), 'b t c h w -> b c t h w').cuda()
 
-        z_list_real = []
+        model.zero_grad()
 
+        # z_list_real = []
+        diff_loss = 0.
         for x_idx in range (0, x.__len__()):
 
             x_p = x[x_idx].to(device)
-            # m_p = m[x_idx].to(device)
+            m_p = m[x_idx].to(device)
             g_p = g[x_idx].to(device)
             x_p = rearrange(x_p / 255. + 1e-8, 'b t c h w -> b c t h w').float()
             # x_p = rearrange(x_p / 127.5 - 1., 'b t c h w -> b c t h w').float()  # videos
-            # m_p = rearrange(m_p + 1e-8, 'b t c h w -> b c t h w').float()
+            m_p = rearrange(m_p + 1e-8, 'b t c h w -> b c t h w').float()
             # m_p = rearrange(2. * m_p - 1., 'b t c h w -> b c t h w').float()
             g_p = rearrange(g_p + 1e-8, 'b t c h w -> b c t h w').float()
             # g_p = rearrange(2. * g_p - 1., 'b t c h w -> b c t h w').float()
             x_p_concat = torch.cat([x_p, g_p], dim=1)
-            # m_p_concat = torch.cat([m_p, g_p], dim=1)
+            m_p_concat = torch.cat([m_p, g_p], dim=1)
 
             cond_p = cond[x_idx].to(device)
-
-            # conditional free guidance training
-            model.zero_grad()
 
             with autocast():
                 with torch.no_grad():
                     # z = first_stage_model.encode(x_p_concat, cond_p).detach()
                     z = first_stage_model.extract(x_p_concat, cond_p)
-                    z_list_real.append(z)
+                    z_m = first_stage_model.extract(m_p_concat, cond_p)
+                    # z_list_real.append(z)
+                    # print(z.shape)
                     # z = first_stage_model.extract_dep(x_p_concat, cond_p)
                     '''
                     print(z.min())
@@ -111,7 +113,7 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             
             ddpm_ae.zero_grad()
             '''
-            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), None)
+            (loss, t), loss_dict = criterion(z.float(), cond_p.float(), c_m=z_m)
 
             loss.backward()
             opt.step()
@@ -121,49 +123,69 @@ def latentDDPM(rank, first_stage_model, model, opt, criterion, train_loader, tes
             # x_p_prev = x_p.clone()
             # m_p_prev = m_p.clone()
 
+            # diff_loss += diff_loss_part
+
+        '''
+        diff_loss = diff_loss / float(x.__len__())
+
+        z_list_fake = z_list_gen(rank, ema_model)
+
+        cont_loss = 0.
+        for i in range(0, 8):
+            value_fake = l1_loss(z_list_fake[i + 1], z_list_fake[i])
+            # value_real = l1_loss(z_list_real[i + 1], z_list_real[i])
+            # cont_loss += abs(value_fake - value_real)
+            cont_loss += value_fake
+
+        # cont_loss.backward()
+        # opt.step()
+
+        cont_loss = cont_loss / 8.
+
+        total_loss = (diff_loss + cont_loss)
+        total_loss.backward()
+        opt.step()
+
+        losses['diffusion_loss'].update(diff_loss.item(), 1)
+        losses['cont_loss'].update(cont_loss.item(), 1)
+        losses['total_loss'].update(total_loss.item(), 1)
+        '''
         # ema model
         if it % 5 == 0:
             ema(model)
 
-            z_list_fake = z_list_gen(rank, ema_model)
-
-            cont_loss = 0.
-            for i in range(0, 8):
-                value_fake = l1_loss(z_list_fake[i + 1], z_list_fake[i])
-                value_real = l1_loss(z_list_real[i + 1], z_list_real[i])
-                cont_loss += abs(value_fake - value_real)
-
-            cont_loss.backward()
-            opt.step()
-
-            losses['cont_loss'].update(cont_loss.item(), 1)
-
         if it % 125 == 0:
-        # if it % 5 == 0:
             # if logger is not None and rank == 0:
             if logger is not None:
                 logger.scalar_summary('train/diffusion_loss', losses['diffusion_loss'].average, it)
-                logger.scalar_summary('train/cont_loss', losses['cont_loss'].average, it)
+                # logger.scalar_summary('train/cont_loss', losses['cont_loss'].average, it)
+                # logger.scalar_summary('train/total_loss', losses['total_loss'].average, it)
 
                 '''
                 log_('[Time %.3f] [Diffusion %f] [AE %f]' %
                      (time.time() - check, losses['diffusion_loss'].average, losses['ae_loss'].average))
-                    '''
+         
 
-                log_('[Time %.3f] [Diffusion %f] [Cont %f]' %
-                     (time.time() - check, losses['diffusion_loss'].average, losses['cont_loss'].average))
+                log_('[Time %.3f] [Diffusion %f] [Cont %f] [Total %f]' %
+                     (time.time() - check, losses['diffusion_loss'].average, losses['cont_loss'].average, losses['total_loss'].average))
+                '''
+
+                log_('[Time %.3f] [Diffusion %f]' %
+                     (time.time() - check, losses['diffusion_loss'].average))
+
 
                 losses = dict()
                 losses['diffusion_loss'] = AverageMeter()
-                losses['cont_loss'] = AverageMeter()
+                # losses['cont_loss'] = AverageMeter()
+                # losses['total_loss'] = AverageMeter()
 
         if it % 2000 == 0:
             torch.save(model.state_dict(), rootdir + f'model_{it}.pth')
             # torch.save(ddpm_ae.state_dict(), rootdir + f'ae_model_{it}.pth')
             ema.copy_to(ema_model)
             torch.save(ema_model.state_dict(), rootdir + f'ema_model_{it}.pth')
-            # save_image_ddpm_mask(rank, ema_model, first_stage_model, it, test_loader, logger)
-            save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
+            save_image_ddpm_mask(rank, ema_model, first_stage_model, it, test_loader, logger)
+            # save_image_ddpm_cond(rank, ema_model, first_stage_model, it, logger)
             # save_image_ddpm_cond_ae(rank, ema_model, first_stage_model, ddpm_ae, it, logger)
 
 
@@ -207,7 +229,7 @@ def first_stage_train(rank, model, opt, d_opt, criterion, train_loader, test_loa
     # for it, (x, m, cond, _) in enumerate(train_loader):
     for it, (x, m, g, cond, _) in enumerate(train_loader):
 
-        it = it + 52500
+        it = it + 3750
 
         # Store previous partitions
         # x_p_prev = rearrange(torch.zeros(x[0].shape), 'b t c h w -> b c t h w').cuda()
